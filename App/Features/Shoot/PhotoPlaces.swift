@@ -68,8 +68,9 @@ final class PhotoPlaces {
         var checked: [String]
         var readAt: Date?
         var sent: [Sent]?
-        /// 2: files are marked read only when their read worked. Lists saved before that are
-        /// dropped, so the photos they marked are read again.
+        /// 3: files are marked read only when their read worked, and a file with no GPS in its
+        /// metadata has its header read too. Lists saved before that are dropped, so the photos
+        /// they marked are read again.
         var version: Int?
     }
 
@@ -81,7 +82,7 @@ final class PhotoPlaces {
         url = dir.appendingPathComponent(filename)
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
             places = saved.places
-            checked = (saved.version ?? 1) >= 2 ? Set(saved.checked) : []
+            checked = (saved.version ?? 1) >= 3 ? Set(saved.checked) : []
             readAt = saved.readAt
             sent = saved.sent ?? []
         }
@@ -121,7 +122,7 @@ final class PhotoPlaces {
     #endif
 
     private func save() {
-        let saved = Saved(places: places, checked: Array(checked), readAt: readAt, sent: sent, version: 2)
+        let saved = Saved(places: places, checked: Array(checked), readAt: readAt, sent: sent, version: 3)
         if let data = try? JSONEncoder().encode(saved) { try? data.write(to: url, options: .atomic) }
     }
 }

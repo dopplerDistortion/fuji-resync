@@ -49,8 +49,6 @@ final class BLECameraController: NSObject {
     @ObservationIgnored private var pendingPairing: FujiBLE.PairingKind?
     /// Handshake sent on this connection; we wait for the camera to talk back before calling it linked.
     @ObservationIgnored private var handshakeSent = false
-    /// Every characteristic we listen to, so the log shows all the camera says while you shoot.
-    @ObservationIgnored private var listening: Set<String> = []
     /// Drops in a row before the camera accepted us. Drives the reconnect backoff.
     @ObservationIgnored private var failedLinks = 0
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
@@ -167,7 +165,6 @@ final class BLECameraController: NSObject {
         }
         reconnectTask?.cancel(); reconnectTask = nil
         handshakeSent = false
-        listening = []
         peripheral = p
         p.delegate = self
         characteristics = [:]
@@ -197,7 +194,6 @@ final class BLECameraController: NSObject {
 
     private func didDiscoverCharacteristics(_ p: CBPeripheral, service: CBService) {
         for c in service.characteristics ?? [] { characteristics[c.uuid.uuidString.uppercased()] = c }
-        if handshakeSent { listenToEverything(p) }
         // Wait until the services we need are in.
         let have = Set(characteristics.keys)
         let needed: Set<String> = [FujiBLE.Characteristic.geotagWrite, FujiBLE.Characteristic.geotagRequest]
@@ -220,7 +216,11 @@ final class BLECameraController: NSObject {
         }
         if let c = characteristics[C.clientIdentity] { p.writeValue(Data("resync".utf8), for: c, type: .withResponse) }
 
-        listenToEverything(p)
+        for id in [C.indication1, C.indication2, C.notification1, C.geotagRequest, C.indication3, C.geotagSyncInterval] {
+            if let c = characteristics[id], c.properties.contains(.notify) || c.properties.contains(.indicate) {
+                p.setNotifyValue(true, for: c)
+            }
+        }
         if let c = characteristics[C.geotagSyncInterval] {
             var w = ByteWriter(); w.u16(FujiBLE.geotagSyncIntervalSeconds)
             p.writeValue(w.data, for: c, type: .withResponse)
@@ -256,20 +256,6 @@ final class BLECameraController: NSObject {
         if let t = UserDefaults.standard.data(forKey: Keys.token) { return .legacy(token: t) }
         if let s = UserDefaults.standard.data(forKey: Keys.serial) { return .secure(serial: s) }
         return nil
-    }
-
-    /// Listens to every characteristic that notifies or indicates, not only the ones we act on: a
-    /// shot may show up on one of them, which would let the frame count follow the camera.
-    private func listenToEverything(_ p: CBPeripheral) {
-        let fresh = characteristics.filter { id, c in
-            !listening.contains(id) && (c.properties.contains(.notify) || c.properties.contains(.indicate))
-        }
-        guard !fresh.isEmpty else { return }
-        for (id, c) in fresh {
-            listening.insert(id)
-            p.setNotifyValue(true, for: c)
-        }
-        note("listening to " + fresh.keys.map { String($0.prefix(8)) }.sorted().joined(separator: ", "))
     }
 
     private func didUpdate(_ c: CBCharacteristic, value: Data, on p: CBPeripheral) {
@@ -349,7 +335,6 @@ extension BLECameraController: CBCentralManagerDelegate {
             note("disconnected\(wasLinked ? "" : " before the camera accepted")" + (error.map { ": \($0.localizedDescription)" } ?? ""))
             characteristics = [:]
             handshakeSent = false
-            listening = []
             location.setActive(false)
             if !wasLinked { failedLinks += 1 }
             let pairingFailed = pendingPairing != nil && failedLinks >= 3

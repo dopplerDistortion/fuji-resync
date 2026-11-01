@@ -47,9 +47,10 @@ struct PhotoMap: View {
                         .overlay(Rectangle().fill(Token.foreground).frame(width: 4, height: 4))
                 }
             }
-            // Fit and the legal label keep clear of our chips above and the live view button below.
+            // Fit keeps clear of our chips above; the legal label sits low at the left, beside the
+            // centred live view button.
             .safeAreaPadding(.top, 52)
-            .safeAreaPadding(.bottom, 72)
+            .safeAreaPadding(.bottom, 8)
             .safeAreaPadding(.horizontal, 12)
             .onMapCameraChange { ctx in centre = ctx.region.center }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))

@@ -131,6 +131,24 @@ final class BLECameraController: NSObject {
         p.writeValue(FujiBLE.Shutter.release, for: c, type: .withResponse)
     }
 
+    enum ShutterAction { case half, press, release }
+
+    /// One step of a held shutter: half-press to focus, press to fire (and hold for bulb), release.
+    func shutter(_ action: ShutterAction) {
+        guard let p = peripheral, let c = characteristics[FujiBLE.Characteristic.shutter] else {
+            note("shutter not available on this link")
+            return
+        }
+        let value: Data
+        switch action {
+        case .half: value = FujiBLE.Shutter.halfPress
+        case .press: value = FujiBLE.Shutter.press
+        case .release: value = FujiBLE.Shutter.release
+        }
+        p.writeValue(FujiBLE.Shutter.command, for: c, type: .withResponse)
+        p.writeValue(value, for: c, type: .withResponse)
+    }
+
     var canShutter: Bool { isLinked && characteristics[FujiBLE.Characteristic.shutter] != nil }
 
     // MARK: Internals

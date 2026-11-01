@@ -179,7 +179,7 @@ final class USBCameraController: NSObject {
             return !(Self.kind(of: n) == .raw && developed.contains(Self.stem(n)))
         }
         let files = shots.filter { !skipping.contains(($0.name ?? "").lowercased()) }.suffix(limit)
-        note("card: \(all.count) files listed, \(photos.count) photos, \(files.count) not read yet"
+        note("card: \(all.count) files listed, \(photos.count) photos (\(photos.count - shots.count) raw beside a jpeg, skipped), \(files.count) not read yet"
             + (contentsAllowed == false ? " · photo access not allowed" : ""))
         guard !files.isEmpty else { return ([], []) }
         busy = "reading photo locations"
@@ -193,9 +193,12 @@ final class USBCameraController: NSObject {
             let (meta, error) = await Self.metadata(of: f)
             var props = meta
             var how = "metadata"
-            // ImageCaptureCore can answer with no EXIF at all; then read the file's header.
-            if !Self.hasImageProperties(props) {
-                props = await Self.headerProperties(of: f, kind: Self.kind(of: name) ?? .jpeg)
+            // ImageCaptureCore can answer with no EXIF, or with EXIF but no {GPS}; then read the
+            // file's own header, which has the GPS if the camera wrote it.
+            if !(props.map(Self.hasGPS) ?? false),
+               let header = await Self.headerProperties(of: f, kind: Self.kind(of: name) ?? .jpeg),
+               Self.hasImageProperties(header) {
+                props = header
                 how = "header"
             }
             if described < 2 {

@@ -42,11 +42,14 @@ struct MapboxPhotoLayer: View {
                 }
                 .allowOverlap(true)
             }
-            Puck2D()
-                .topImage(Self.userMark)
-                .bearingImage(nil)
-                .shadowImage(Self.clear)
-                .showsAccuracyRing(false)
+            // The puck asks for location; UI tests run with no permission prompts.
+            if !UITest.isOn {
+                Puck2D()
+                    .topImage(Self.userMark)
+                    .bearingImage(nil)
+                    .shadowImage(Self.clear)
+                    .showsAccuracyRing(false)
+            }
         }
         .mapStyle(MapboxSetup.style ?? .dark)
         .gestureOptions(Self.gestures)

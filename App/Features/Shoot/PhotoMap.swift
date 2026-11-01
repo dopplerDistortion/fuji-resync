@@ -66,14 +66,14 @@ struct PhotoMap: View {
                     .font(Typeface.body(12))
                     .foregroundStyle(Token.mutedForeground)
                     .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(Token.background.opacity(0.8))
+                    .background(Token.background)
                     .fixedSize(horizontal: false, vertical: true)
             } else if let at = places.readAt {
                 Text("card read " + at.formatted(date: .abbreviated, time: .shortened).lowercased())
                     .font(Typeface.body(11))
                     .foregroundStyle(Token.mutedForeground)
                     .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Token.background.opacity(0.8))
+                    .background(Token.background)
             }
         }
         .padding(8)
@@ -181,7 +181,9 @@ struct PinButton: View {
     var body: some View {
         PinMark(count: pin.photos.count, lit: picked == pin.id, label: picked == pin.id ? pin.label : nil,
                 // The tag runs toward the middle of the map, so it stays on screen.
-                tagRunsLeft: pin.coordinate.longitude > (centre?.longitude ?? pin.coordinate.longitude))
+                tagRunsLeft: pin.coordinate.longitude > (centre?.longitude ?? pin.coordinate.longitude),
+                // In the upper half the tag hangs below the pin, clear of the chips at the top.
+                tagBelow: pin.coordinate.latitude > (centre?.latitude ?? pin.coordinate.latitude))
             .onTapGesture {
                 picked = picked == pin.id ? nil : pin.id
                 Haptic.play(.selection)
@@ -229,6 +231,7 @@ struct PinMark: View {
     var lit: Bool
     var label: String?
     var tagRunsLeft = false
+    var tagBelow = false
 
     var body: some View {
         // Only the square takes part in layout, so it stays centred on the coordinate; the
@@ -248,7 +251,7 @@ struct PinMark: View {
                         .offset(x: 13)
                 }
             }
-            .overlay(alignment: tagRunsLeft ? .bottomTrailing : .bottomLeading) {
+            .overlay(alignment: tagBelow ? (tagRunsLeft ? .topTrailing : .topLeading) : (tagRunsLeft ? .bottomTrailing : .bottomLeading)) {
                 if let label {
                     Text(label)
                         .font(Typeface.body(11))
@@ -257,7 +260,7 @@ struct PinMark: View {
                         .padding(.horizontal, 6).padding(.vertical, 3)
                         .background(Token.foreground)
                         .fixedSize()
-                        .offset(y: -16)
+                        .offset(y: tagBelow ? 16 : -16)
                         .accessibilityIdentifier("map.picked")
                 }
             }

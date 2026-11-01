@@ -815,7 +815,7 @@ final class SwipeGate {
     fileprivate func hold() { until = Date().addingTimeInterval(0.35) }
 }
 
-/// A row that slides sideways in 8 pt steps to show its actions: one on the leading side,
+/// A row that follows the finger sideways to show its actions: one on the leading side,
 /// which a long swipe runs outright, and up to two on the trailing side. It settles open or
 /// shut in one cut, never a spring. One row stands open at a time; a tap on it shuts it.
 /// VoiceOver gets every action as a named action on the row.
@@ -900,7 +900,7 @@ struct SwipeRow<ID: Hashable, Content: View>: View {
                 }
                 guard axis == .horizontal else { return }
                 gate?.hold()
-                drag = (v.translation.width / 8).rounded(.towardZero) * 8
+                drag = v.translation.width
                 let past = leading != nil && settled + drag > fullSwipe
                 if past != armed {
                     armed = past

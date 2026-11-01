@@ -4,7 +4,7 @@ import FujiKit
 import UniformTypeIdentifiers
 
 /// The recipes tab: the library list and the editor, pushed and popped with hard cuts. A drag
-/// from the left edge pulls the editor aside in 8 pt steps over the list, and lets go with
+/// from the left edge pulls the editor aside over the list under the finger, and lets go with
 /// a cut either way.
 struct RecipesTab: View {
     @Environment(AppNav.self) private var nav
@@ -58,7 +58,7 @@ struct RecipesTab: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                    .onChanged { v in pull = max(0, (v.translation.width / 8).rounded(.down) * 8) }
+                    .onChanged { v in pull = max(0, v.translation.width) }
                     .onEnded { v in
                         let back = v.translation.width > width * 0.33 || v.predictedEndTranslation.width > width * 0.6
                         pull = 0

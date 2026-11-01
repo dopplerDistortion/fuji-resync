@@ -150,10 +150,10 @@ private struct SheetPanel<Content: View>: View {
         .overlay(alignment: .top) { Rectangle().fill(Token.foreground).frame(height: 1) }
     }
 
-    /// The panel follows the finger in 8 pt steps, never smoothly.
+    /// The panel follows the finger 1:1, like anything held; only what moves by itself steps.
     private func grab(isLarge: Bool) -> some Gesture {
         DragGesture(minimumDistance: 6, coordinateSpace: .global)
-            .onChanged { v in drag = max(0, (v.translation.height / 8).rounded(.down) * 8) }
+            .onChanged { v in drag = max(0, v.translation.height) }
             .onEnded { v in
                 let moved = v.translation.height
                 if moved > 120 || v.predictedEndTranslation.height > 320 {
@@ -229,7 +229,8 @@ struct FXMenuItem: Identifiable {
 extension View {
     /// A menu anchored to the view: bone border and crop marks, rows that step in and light
     /// bone when pressed. It opens above the view in the lower half of the screen, below it
-    /// in the upper half. The chosen action runs once the menu is gone.
+    /// in the upper half. It is drawn in the app's own overlay layer, not a presentation, so
+    /// an open keyboard stays open.
     func fxMenu(isPresented: Binding<Bool>, items: [FXMenuItem]) -> some View {
         modifier(FXMenuModifier(isPresented: isPresented, items: items))
     }
@@ -238,28 +239,42 @@ extension View {
 private struct FXMenuModifier: ViewModifier {
     @Binding var isPresented: Bool
     var items: [FXMenuItem]
-    @State private var anchor: CGRect = .zero
-    @State private var pending: (() -> Void)?
+    @Environment(Overlays.self) private var overlays
+    @State private var token = UUID()
 
     func body(content: Content) -> some View {
         content
             .background {
                 GeometryReader { g in
-                    Color.clear
-                        .onAppear { anchor = g.frame(in: .global) }
-                        .onChange(of: g.frame(in: .global)) { _, f in anchor = f }
+                    // Measured at the moment it opens, so the menu lands on the view as it is now.
+                    Color.clear.onChange(of: isPresented) { _, on in
+                        if on {
+                            overlays.menu = Overlays.Menu(id: token, items: items, anchor: g.frame(in: .global))
+                            Haptic.play(.selection)
+                        } else if overlays.menu?.id == token {
+                            overlays.menu = nil
+                        }
+                    }
                 }
             }
-            .modifier(FXCover(isPresented: $isPresented, exit: 60, onDismiss: {
-                let run = pending
-                pending = nil
-                run?()
-            }) { closing, dismiss in
-                MenuPanel(items: items, anchor: anchor, closing: closing, dismiss: dismiss) { item in
-                    pending = item.run
-                    dismiss()
-                }
-            })
+            .onChange(of: overlays.menu?.id) { _, id in
+                if id != token, isPresented { isPresented = false }
+            }
+    }
+}
+
+/// Draws the open menu over everything, tab bar included. Sits at the root, beside the toasts.
+struct MenuLayer: View {
+    @Environment(Overlays.self) private var overlays
+
+    var body: some View {
+        if let menu = overlays.menu {
+            MenuPanel(items: menu.items, anchor: menu.anchor, closing: false, dismiss: { overlays.menu = nil }) { item in
+                overlays.menu = nil
+                item.run()
+            }
+            .id(menu.id)
+        }
     }
 }
 
@@ -314,6 +329,8 @@ private struct MenuPanel: View {
             }
         }
         .ignoresSafeArea()
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { dismiss() }
         .transaction { $0.animation = nil }
         .task {
@@ -441,7 +458,15 @@ final class Overlays {
         var run: () -> Void
     }
 
+    struct Menu: Identifiable {
+        var id: UUID
+        var items: [FXMenuItem]
+        var anchor: CGRect
+    }
+
     private(set) var toast: Toast?
+    /// The one open menu, drawn by MenuLayer.
+    var menu: Menu?
     @ObservationIgnored private var toastRun: (() -> Void)?
     var alert: Alert?
 

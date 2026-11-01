@@ -127,6 +127,7 @@ struct RootView: View {
                 .overlay { OverlayHost(bottomInset: 24) }
             }
         }
+        .overlay { MenuLayer() }
         .background(Token.background.ignoresSafeArea())
         .font(Typeface.body())
         .foregroundStyle(Token.foreground)

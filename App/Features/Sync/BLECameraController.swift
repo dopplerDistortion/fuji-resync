@@ -51,8 +51,6 @@ final class BLECameraController: NSObject {
     @ObservationIgnored private var handshakeSent = false
     /// Every characteristic we listen to, so the log shows all the camera says while you shoot.
     @ObservationIgnored private var listening: Set<String> = []
-    /// The last value of each readable characteristic, so the log shows only what changes.
-    @ObservationIgnored private var lastValue: [String: Data] = [:]
     /// Drops in a row before the camera accepted us. Drives the reconnect backoff.
     @ObservationIgnored private var failedLinks = 0
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
@@ -274,28 +272,11 @@ final class BLECameraController: NSObject {
         note("listening to " + fresh.keys.map { String($0.prefix(8)) }.sorted().joined(separator: ", "))
     }
 
-    /// Reads every readable characteristic that doesn't notify, each time the camera asks for a
-    /// location (about every 10 s). Only changed values reach the log.
-    private func readEverything(_ p: CBPeripheral) {
-        for (id, c) in characteristics where c.properties.contains(.read) && !c.isNotifying
-            && id != FujiBLE.Characteristic.secureStatus {
-            p.readValue(for: c)
-        }
-    }
-
     private func didUpdate(_ c: CBCharacteristic, value: Data, on p: CBPeripheral) {
         let id = c.uuid.uuidString.uppercased()
-        let changed = lastValue[id] != value
-        lastValue[id] = value
-        if c.isNotifying {
-            AppLog.write(.ble, "← \(id.prefix(8)) \(value.hex)")
-        } else if changed {
-            // A read-only value that moved since the last read: a shot may show up here.
-            AppLog.write(.ble, "≡ \(id.prefix(8)) \(value.hex)")
-        }
+        AppLog.write(.ble, "← \(id.prefix(8)) \(value.hex)")
         confirmLink(p, reason: "camera answered")
         if id == FujiBLE.Characteristic.geotagRequest, value.starts(with: FujiBLE.geotagRequested) {
-            readEverything(p)
             guard autoSync else { return }
             if let loc = location.latest, loc.timestamp.timeIntervalSinceNow > -120 { send(loc) }
             else { location.requestOneShot { [weak self] l in self?.send(l) } }

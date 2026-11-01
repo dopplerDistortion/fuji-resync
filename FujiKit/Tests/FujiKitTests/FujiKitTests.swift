@@ -142,7 +142,7 @@ final class PresetCodecTests: XCTestCase {
         XCTAssertEqual(u16(w[FujiProp.grainEffect]), 2)
         XCTAssertEqual(u16(w[FujiProp.colorChrome]), 3)
         XCTAssertEqual(u16(w[FujiProp.colorChromeBlue]), 2)
-        XCTAssertEqual(u16(w[FujiProp.smoothSkin]), 1)
+        XCTAssertNil(w[FujiProp.smoothSkin], "X-T30 II rejects smooth skin writes")
         XCTAssertEqual(u16(w[FujiProp.whiteBalance]), 0x0004)
         XCTAssertNil(w[FujiProp.wbColorTemp], "Kelvin is only written for color-temperature WB")
         XCTAssertEqual(u16(w[FujiProp.wbShiftBlue]).map { Int16(bitPattern: $0) }, -5)
@@ -168,11 +168,22 @@ final class PresetCodecTests: XCTestCase {
         XCTAssertNil(w[FujiProp.monoMagentaGreen])
     }
 
-    func testBaseValuesPassThrough() {
-        var b = ByteWriter(); b.u16(9)
-        let w = dict(PresetCodec.encode(kodachrome(), base: [FujiProp.imageQuality: b.data]))
-        XCTAssertEqual(u16(w[FujiProp.imageQuality]), 9)
-        XCTAssertEqual(u16(w[FujiProp.imageSize]), 7)
+    func testUneditedPropertiesSkippedWhenSlotWasRead() {
+        var b = ByteWriter(); b.u16(1)
+        let base = [FujiProp.imageQuality: b.data, FujiProp.longExposureNR: b.data]
+        let w = dict(PresetCodec.encode(kodachrome(), base: base))
+        XCTAssertNil(w[FujiProp.imageQuality])
+        XCTAssertNil(w[FujiProp.longExposureNR])
+        XCTAssertEqual(u16(w[FujiProp.imageSize]), 7, "no base value: default is written")
+    }
+
+    func testDynamicRangeAuto() {
+        var r = kodachrome(); r.dynamicRange = .auto
+        let w = dict(PresetCodec.encode(r))
+        XCTAssertEqual(u16(w[FujiProp.dynamicRange]), 0xFFFF)
+        let back = PresetCodec.decode(CameraPreset(slot: 4, name: r.name, raw: w))
+        XCTAssertEqual(back.dynamicRange, .auto)
+        XCTAssertEqual(RecipeText.parse("X\nDynamic Range: DR-Auto").recipe.dynamicRange, .auto)
     }
 
     func testDecodeRoundTrip() {

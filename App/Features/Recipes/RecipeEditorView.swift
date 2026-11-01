@@ -50,7 +50,6 @@ struct RecipeEditorView: View {
                 MenuRow(label: "grain", selection: $draft.grain, options: GrainEffect.allCases) { $0.label }
                 MenuRow(label: "color chrome", selection: $draft.colorChrome, options: EffectStrength.allCases) { $0.label }
                 MenuRow(label: "cc fx blue", selection: $draft.colorChromeBlue, options: EffectStrength.allCases) { $0.label }
-                MenuRow(label: "smooth skin", selection: $draft.smoothSkin, options: EffectStrength.allCases) { $0.label }
             }
 
             Panel(title: "white balance") {
@@ -83,7 +82,7 @@ struct RecipeEditorView: View {
                 FXTextField(label: "exposure comp.", text: $draft.exposureNote, prompt: "+1/3 to +2/3")
                 FXTextField(label: "notes", text: $draft.notes)
                 FXTextField(label: "source", text: $draft.source, prompt: "url or where it came from")
-                Text("dr\(draft.dynamicRange.code) needs iso \(draft.dynamicRange.minimumISO) or higher on the camera.")
+                Text("\(draft.dynamicRange.label.lowercased()) needs iso \(draft.dynamicRange.minimumISO) or higher on the camera.")
                     .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
             }
 

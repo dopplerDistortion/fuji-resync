@@ -200,6 +200,7 @@ public enum RecipeText {
     }
 
     static func dynamicRange(_ v: String) -> DynamicRange? {
+        if v.contains("auto") { return .auto }
         if v.contains("400") { return .dr400 }
         if v.contains("200") { return .dr200 }
         if v.contains("100") { return .dr100 }

@@ -336,21 +336,28 @@ public enum WhiteBalance: String, Codable, CaseIterable, Sendable, Identifiable 
 }
 
 public enum DynamicRange: String, Codable, CaseIterable, Sendable, Identifiable {
-    case dr100, dr200, dr400
+    case auto, dr100, dr200, dr400
     public var id: String { rawValue }
-    /// Custom-setting encoding is the raw percentage.
+    /// Custom-setting encoding is the raw percentage; DR-Auto is 0xFFFF (seen on an X-T30 II).
     public var code: UInt16 { switch self {
+        case .auto: return 0xFFFF
         case .dr100: return 100
         case .dr200: return 200
         case .dr400: return 400
         } }
     public init?(code: UInt16) {
-        switch code { case 100: self = .dr100; case 200: self = .dr200; case 400: self = .dr400; default: return nil }
+        switch code {
+        case 0xFFFF: self = .auto
+        case 100: self = .dr100
+        case 200: self = .dr200
+        case 400: self = .dr400
+        default: return nil
+        }
     }
-    public var label: String { "DR\(code)" }
+    public var label: String { self == .auto ? "DR-Auto" : "DR\(code)" }
     /// The camera needs at least this ISO before it accepts the setting.
     public var minimumISO: Int { switch self {
-        case .dr100: return 160
+        case .auto, .dr100: return 160
         case .dr200: return 320
         case .dr400: return 640
         } }

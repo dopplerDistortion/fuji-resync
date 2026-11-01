@@ -41,6 +41,9 @@ public struct CameraPreset: Equatable, Sendable {
 /// - Tone values are ×10 (+1.5 → 15).
 /// - High ISO NR uses a non-linear table.
 /// - Colour temperature must be written right after the WB mode, and only for Kelvin WB.
+/// - On the X-T30 II, smooth skin (0xD198) and long-exposure NR (0xD1A3) answer "invalid value"
+///   to any write, even of their current value, so smooth skin is never sent and properties we
+///   don't edit are only written when no base read is available.
 /// - Colour is omitted for B&W sims; mono WC/MG are omitted for colour sims and when zero
 ///   (the camera rejects a written zero).
 public enum PresetCodec {
@@ -66,23 +69,24 @@ public enum PresetCodec {
         let r = input.normalized()
         let mono = r.filmSimulation.isMonochrome
 
-        func passthrough(_ code: UInt16) -> PropWrite {
-            if let b = base[code] { return PropWrite(code, b) }
-            return .u16(code, unknownDefaults[code] ?? 0)
+        var out: [PropWrite] = []
+        // Properties we don't edit: leave them alone when the slot was read first (writing them
+        // back gets "invalid value" for some), fill in known defaults otherwise.
+        func passthrough(_ code: UInt16) {
+            guard base[code] == nil else { return }
+            out.append(.u16(code, unknownDefaults[code] ?? 0))
         }
 
-        var out: [PropWrite] = []
-        out.append(passthrough(FujiProp.imageSize))
-        out.append(passthrough(FujiProp.imageQuality))
+        passthrough(FujiProp.imageSize)
+        passthrough(FujiProp.imageQuality)
         out.append(.u16(FujiProp.dynamicRange, r.dynamicRange.code))
-        out.append(passthrough(FujiProp.unknownD191))
+        passthrough(FujiProp.unknownD191)
         out.append(.u16(FujiProp.filmSimulation, r.filmSimulation.code))
         if mono && r.monoWarmCool != 0 { out.append(.i16(FujiProp.monoWarmCool, r.monoWarmCool * 10)) }
         if mono && r.monoMagentaGreen != 0 { out.append(.i16(FujiProp.monoMagentaGreen, r.monoMagentaGreen * 10)) }
         out.append(.u16(FujiProp.grainEffect, r.grain.code))
         out.append(.u16(FujiProp.colorChrome, r.colorChrome.code))
         out.append(.u16(FujiProp.colorChromeBlue, r.colorChromeBlue.code))
-        out.append(.u16(FujiProp.smoothSkin, r.smoothSkin.code))
         out.append(.u16(FujiProp.whiteBalance, r.whiteBalance.code))
         if r.whiteBalance == .kelvin { out.append(.u16(FujiProp.wbColorTemp, UInt16(r.kelvin))) }
         out.append(.i16(FujiProp.wbShiftRed, r.wbShiftRed))
@@ -93,9 +97,9 @@ public enum PresetCodec {
         out.append(.i16(FujiProp.sharpness, r.sharpness * 10))
         out.append(.u16(FujiProp.noiseReduction, nrEncode[r.noiseReduction] ?? 0x2000))
         out.append(.i16(FujiProp.clarity, r.clarity * 10))
-        out.append(passthrough(FujiProp.longExposureNR))
-        out.append(passthrough(FujiProp.colorSpace))
-        out.append(passthrough(FujiProp.unknownD1A5))
+        passthrough(FujiProp.longExposureNR)
+        passthrough(FujiProp.colorSpace)
+        passthrough(FujiProp.unknownD1A5)
         return out
     }
 

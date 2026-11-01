@@ -18,7 +18,12 @@ struct CameraView: View {
         TabScreen(path: ["camera"]) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if ble.savedCameraID == nil { PairPanel() } else { linkPanel }
+                    if ble.savedCameraID == nil {
+                        PairPanel()
+                    } else {
+                        linkPanel
+                        SessionPanel()
+                    }
                     if case .needsPermission = usb.phase {
                         FaultPanel(title: "usb-c", message: "resync isn't allowed to control the camera. allow it in settings › resync, then come back.",
                                    action: ("open settings", {

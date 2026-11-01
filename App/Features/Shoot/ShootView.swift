@@ -27,9 +27,6 @@ struct ShootView: View {
                             PairPanel()
                                 .padding(.horizontal, Token.gutter)
                                 .padding(.bottom, 14)
-                        } else {
-                            if !ble.isLinked { LinkLostStrip() }
-                            SessionStrip()
                         }
                         Viewfinder(full: false)
                             .padding(.horizontal, Token.gutter)
@@ -86,83 +83,6 @@ private struct GeotagStrip: View {
         guard let t = ble.lastSync else { return "waiting for the camera" }
         let acc = ble.lastSentLocation.map { " · ±\(Int($0.horizontalAccuracy)) m" } ?? ""
         return "synced " + t.formatted(date: .omitted, time: .shortened).lowercased() + acc
-    }
-}
-
-/// `session · off ……… [start shooting session]`, then `■ 00:12:03 · on the lock screen ……… [end]`.
-/// A session keeps the camera linked and geotags flowing with the phone in a pocket.
-private struct SessionStrip: View {
-    @Environment(ShootingSession.self) private var session
-    @Environment(BLECameraController.self) private var ble
-    @Environment(ShutterState.self) private var shutter
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                if let since = session.startedAt {
-                    BlinkMark(color: Token.foreground)
-                    Text(timerInterval: since ... Date.distantFuture, countsDown: false)
-                        .monospacedDigit()
-                        .foregroundStyle(Token.foreground)
-                        .frame(maxWidth: 84, alignment: .leading)
-                    Text(session.fault == nil ? "· on the lock screen" : "· running")
-                        .foregroundStyle(Token.mutedForeground)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    FXButton("end", .outline, compact: true, haptic: .selection) { session.end() }
-                        .accessibilityIdentifier("session.end")
-                } else {
-                    Text("session").foregroundStyle(Token.mutedForeground)
-                    Text("·").foregroundStyle(Token.mark)
-                    Text("off").foregroundStyle(Token.mutedForeground)
-                    Spacer(minLength: 8)
-                    FXButton("start shooting session", .outline, compact: true, haptic: .medium) {
-                        session.start(ble: ble, shutter: shutter)
-                    }
-                    .accessibilityIdentifier("session.start")
-                }
-            }
-            if let fault = session.fault {
-                Text(fault).font(Typeface.body(12)).foregroundStyle(Token.signal)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .font(Typeface.body(13))
-        .padding(.horizontal, Token.gutter)
-        .padding(.bottom, 10)
-        .transaction { $0.animation = nil }
-    }
-}
-
-/// Paired but not in range: the camera is off or asleep. Not a fault.
-private struct LinkLostStrip: View {
-    @Environment(BLECameraController.self) private var ble
-
-    var body: some View {
-        HStack(spacing: 8) {
-            switch ble.phase {
-            case .connecting: BlinkMark()
-            case .scanning: ScanGlyph()
-            case .fault: Text("■").foregroundStyle(Token.signal)
-            default: Text("■").foregroundStyle(Token.mark)
-            }
-            Text(text).foregroundStyle(Token.mutedForeground).lineLimit(1)
-            Spacer(minLength: 8)
-            FXButton("reconnect", .outline, compact: true) { ble.reconnect() }
-        }
-        .font(Typeface.body(13))
-        .padding(.horizontal, Token.gutter)
-        .padding(.bottom, 8)
-        .feedIn()
-    }
-
-    private var text: String {
-        switch ble.phase {
-        case .connecting: return "reconnecting to the camera"
-        case .scanning: return "looking for the camera"
-        case .fault: return "link dropped · shutter paused"
-        default: return "camera not in range · shutter paused"
-        }
     }
 }
 

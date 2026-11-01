@@ -33,7 +33,7 @@ struct TabBar: View {
                                 .font(Typeface.medium(10))
                                 .frame(minWidth: 16, minHeight: 16)
                                 .overlay(Rectangle().strokeBorder(Token.foreground, lineWidth: 1))
-                                .offset(x: 30, y: 8)
+                                .offset(x: 38, y: 4)
                                 .accessibilityLabel("\(badge) queued")
                                 .accessibilityIdentifier("tab.badge")
                         }

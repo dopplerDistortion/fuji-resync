@@ -170,12 +170,12 @@ struct RecipeListView: View {
                     .frame(minHeight: 20)
                     .overlay(Rectangle().strokeBorder(Token.foreground, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(pulling ? "pulling c1–c7" : "pull c1–c7 to library").font(Typeface.body(15))
+                    Text(pullTitle).font(Typeface.body(15))
                     Text(pullDetail).font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                if pulling { BlinkMark() } else { Text("↓").foregroundStyle(Token.mutedForeground) }
+                if pullItem?.state == .running { BlinkMark() } else { Text(pulling ? "○" : "↓").foregroundStyle(Token.mutedForeground) }
             }
             .foregroundStyle(Token.foreground)
             .padding(12)
@@ -186,6 +186,16 @@ struct RecipeListView: View {
         .disabled(pulling)
         .accessibilityIdentifier("pullbar")
         .feedIn()
+    }
+
+    private var pullItem: SendQueue.Item? { queue.open.first { $0.kind == .pull } }
+
+    private var pullTitle: String {
+        switch pullItem?.state {
+        case .running?: return "pulling c1–c7"
+        case .waiting?, .failed?: return "pull queued · waits for the cable"
+        default: return "pull c1–c7 to library"
+        }
     }
 
     private var pullDetail: String {

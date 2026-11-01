@@ -547,25 +547,23 @@ private struct RepeatButton: View {
             .overlay(Rectangle().strokeBorder(held ? Token.foreground : Token.input, lineWidth: 1))
             .opacity(enabled ? 1 : 0.35)
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard enabled, !held else { return }
-                        held = true
-                        _ = action()
-                        repeater = Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 400_000_000)
-                            while !Task.isCancelled {
-                                if !action() { break }
-                                try? await Task.sleep(nanoseconds: 90_000_000)
-                            }
-                        }
+            .onTapGesture {
+                guard enabled else { return }
+                _ = action()
+            }
+            .onLongPressGesture(minimumDuration: 0.4, maximumDistance: 24, perform: {
+                guard enabled else { return }
+                repeater = Task { @MainActor in
+                    while !Task.isCancelled {
+                        if !action() { break }
+                        try? await Task.sleep(nanoseconds: 90_000_000)
                     }
-                    .onEnded { _ in
-                        held = false
-                        repeater?.cancel(); repeater = nil
-                    }
-            )
+                }
+            }, onPressingChanged: { pressing in
+                held = pressing && enabled
+                if !pressing { repeater?.cancel(); repeater = nil }
+            })
+            .accessibilityAddTraits(.isButton)
             .allowsHitTesting(enabled)
             .accessibilityLabel(label)
             .transaction { $0.animation = nil }

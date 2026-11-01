@@ -144,7 +144,7 @@ struct CameraView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(queue.items.enumerated()), id: \.element.id) { i, item in
-                        QueueRow(item: item)
+                        QueueRow(item: item, divider: i > 0)
                             .stepIn(i)
                     }
                     if queue.items.contains(where: { !$0.isOpen }) {
@@ -236,9 +236,10 @@ private struct SlotRowStyle: ButtonStyle {
                 .foregroundStyle(inLibrary ? Token.ink : Token.foreground)
                 .background(inLibrary ? Token.foreground : .clear)
                 .overlay(Rectangle().strokeBorder(Token.foreground, lineWidth: inLibrary ? 0 : 1))
-            Text(name).font(Typeface.body(15)).lineLimit(1)
+            Text(name).font(Typeface.body(15)).lineLimit(1).layoutPriority(1)
             Leader()
-            Text(value).font(Typeface.body(13)).foregroundStyle(lit ? Token.ink.opacity(0.7) : Token.mutedForeground).lineLimit(1)
+            Text(value).font(Typeface.body(13)).foregroundStyle(lit ? Token.ink.opacity(0.7) : Token.mutedForeground)
+                .lineLimit(1).fixedSize()
         }
         .foregroundStyle(lit ? Token.ink : Token.foreground)
         .padding(.horizontal, 14)
@@ -259,6 +260,7 @@ private struct SlotLine {
 
 private struct QueueRow: View {
     var item: SendQueue.Item
+    var divider = true
     @Environment(SendQueue.self) private var queue
 
     var body: some View {
@@ -293,7 +295,7 @@ private struct QueueRow: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Rectangle().fill(Token.border).frame(height: 1) }
+        .overlay(alignment: .top) { if divider { Rectangle().fill(Token.border).frame(height: 1) } }
         .feedIn()
     }
 
@@ -425,7 +427,7 @@ struct SendSheet: View {
             if already {
                 Text("already holds \(recipe.name.lowercased())").foregroundStyle(Token.mutedForeground)
             } else {
-                Text(from ?? "unknown").foregroundStyle(Token.mutedForeground).strikethrough(from != nil, color: Token.mark)
+                Text(from ?? "not read yet").foregroundStyle(Token.mutedForeground).strikethrough(from != nil, color: Token.mark)
                 Text("→").foregroundStyle(Token.mark)
                 Text(recipe.name.lowercased()).foregroundStyle(Token.foreground)
             }

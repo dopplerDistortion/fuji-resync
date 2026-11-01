@@ -9,6 +9,7 @@ struct PhotoMap: View {
     @Environment(PhotoPlaces.self) private var places
     @State private var position: MapCameraPosition = .automatic
     @State private var picked: String?
+    @State private var centre: CLLocationCoordinate2D?
 
     var body: some View {
         let pins = Pin.group(places.places)
@@ -25,7 +26,9 @@ struct PhotoMap: View {
                 }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate, anchor: .center) {
-                        PinMark(count: pin.photos.count, lit: picked == pin.id, label: picked == pin.id ? pin.label : nil)
+                        PinMark(count: pin.photos.count, lit: picked == pin.id, label: picked == pin.id ? pin.label : nil,
+                                // The tag runs toward the middle of the map, so it stays on screen.
+                                tagRunsLeft: pin.coordinate.longitude > (centre?.longitude ?? pin.coordinate.longitude))
                             .onTapGesture {
                                 picked = picked == pin.id ? nil : pin.id
                                 Haptic.play(.selection)
@@ -47,6 +50,7 @@ struct PhotoMap: View {
             .safeAreaPadding(.top, 52)
             .safeAreaPadding(.bottom, 72)
             .safeAreaPadding(.horizontal, 12)
+            .onMapCameraChange { ctx in centre = ctx.region.center }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
             .environment(\.colorScheme, .dark)
             .saturation(0)
@@ -132,6 +136,7 @@ private struct PinMark: View {
     var count: Int
     var lit: Bool
     var label: String?
+    var tagRunsLeft = false
 
     var body: some View {
         // Only the square takes part in layout, so it stays centred on the coordinate; the
@@ -151,7 +156,7 @@ private struct PinMark: View {
                         .offset(x: 13)
                 }
             }
-            .overlay(alignment: .bottom) {
+            .overlay(alignment: tagRunsLeft ? .bottomTrailing : .bottomLeading) {
                 if let label {
                     Text(label)
                         .font(Typeface.body(11))

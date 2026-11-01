@@ -142,7 +142,7 @@ struct CameraView: View {
     private var queuePanel: some View {
         Panel(title: "/queue", meta: "writes over usb-c") {
             if queue.items.isEmpty {
-                Text("empty. send a recipe from its swipe, the editor, or the shoot tab.")
+                Text("empty. send a recipe from its swipe or the editor.")
                     .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(14)

@@ -291,7 +291,7 @@ private struct MenuPanel: View {
         GeometryReader { g in
             let space = g.frame(in: .global)
             let a = anchor.offsetBy(dx: -space.minX, dy: -space.minY)
-            let width = min(280, g.size.width - Token.gutter * 2)
+            let width = min(330, g.size.width - Token.gutter * 2)
             let x = min(max(Token.gutter, a.maxX - width), g.size.width - Token.gutter - width)
             let below = a.midY < g.size.height / 2
             ZStack(alignment: .topLeading) {

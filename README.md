@@ -33,6 +33,8 @@ Run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 
 - **recipes over USB:** MENU → SET UP → CONNECTION SETTING → PC CONNECTION MODE → **USB RAW CONV./BACKUP RESTORE**. Use a USB-C data cable no longer than 1.5 m.
 - **GPS sync:** MENU → NETWORK/USB SETTING → Bluetooth settings → **pairing registration**, then tap *scan* in the app. Turn on *geotagging* and *location info*. Allow location "always" on the phone so it keeps syncing in the background.
+- **photo map:** when the camera is on the cable, resync reads the GPS of every photo on the card it hasn't read before and pins it on the shoot tab's map. The card may only be listed in **USB CARD READER** mode, not in RAW CONV./BACKUP RESTORE; this is not yet tested on the X-T30 II. Between reads, the map also trails each location resync sent the camera.
+- **shooting session:** *start shooting session* on the shoot tab keeps location running in the background (iOS shows its location indicator) so the camera stays linked and geotagged with the phone in a pocket. A Live Activity on the lock screen and in the Dynamic Island shows the link, the last geotag, geotags sent and frames fired from resync. The camera doesn't report its own shutter count over Bluetooth.
 - **remote:** open **wireless communication** on the camera, then tap *connect* in the app. The first time, accept the "resync" request on the camera.
 
 ## import / export
@@ -50,7 +52,9 @@ FujiKit/            protocol core, pure Swift, unit tested
   Recipe/           model, text parser/formatter, JSON bundle
 App/
   Design/           goksen.ing tokens + components (panel, path bar, leader rows, fault)
-  Features/         recipes, camera (USB), sync (BLE + location), remote (Wi-Fi)
+  Features/         recipes, camera (USB), sync (BLE + location), remote (Wi-Fi), shoot (map), session
+Shared/             the Live Activity's attributes, built into the app and the widget
+Widgets/            the widget extension: the shooting session's Live Activity
   Resources/Fonts   Martian Mono (instanced at wdth 112.5 / wght 300), Geist Mono, OFL
 ```
 
@@ -61,6 +65,7 @@ App/
 | custom-setting property map (0xD18C–0xD1A5) | from filmkit's captures on an X100VI. The Fuji X Weekly app writes the same slots on an X-T30 II, so it should work. |
 | auto white priority WB code `0x8020` | a guess, not yet verified |
 | Bluetooth geotag/shutter | from furble, where it's verified on the X-T30, X-S10 and X-E4 |
+| photo GPS over USB (ImageCaptureCore metadata) | not yet tested on this body, and may need USB CARD READER mode |
 | Wi-Fi remote handshake | from libfuji. Live view framing (18-byte header + JPEG) not yet tested on this body |
 
 If the camera rejects a property, the write report lists its code and the value that was sent, which makes it straightforward to fix.

@@ -27,8 +27,9 @@ struct ShootView: View {
                             PairPanel()
                                 .padding(.horizontal, Token.gutter)
                                 .padding(.bottom, 14)
-                        } else if !ble.isLinked {
-                            LinkLostStrip()
+                        } else {
+                            if !ble.isLinked { LinkLostStrip() }
+                            SessionStrip()
                         }
                         Viewfinder(full: false)
                             .padding(.horizontal, Token.gutter)
@@ -88,6 +89,51 @@ private struct GeotagStrip: View {
     }
 }
 
+/// `session · off ……… [start shooting session]`, then `■ 00:12:03 · on the lock screen ……… [end]`.
+/// A session keeps the camera linked and geotags flowing with the phone in a pocket.
+private struct SessionStrip: View {
+    @Environment(ShootingSession.self) private var session
+    @Environment(BLECameraController.self) private var ble
+    @Environment(ShutterState.self) private var shutter
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if let since = session.startedAt {
+                    BlinkMark(color: Token.foreground)
+                    Text(timerInterval: since ... Date.distantFuture, countsDown: false)
+                        .monospacedDigit()
+                        .foregroundStyle(Token.foreground)
+                        .frame(maxWidth: 84, alignment: .leading)
+                    Text(session.fault == nil ? "· on the lock screen" : "· running")
+                        .foregroundStyle(Token.mutedForeground)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    FXButton("end", .outline, compact: true, haptic: .selection) { session.end() }
+                        .accessibilityIdentifier("session.end")
+                } else {
+                    Text("session").foregroundStyle(Token.mutedForeground)
+                    Text("·").foregroundStyle(Token.mark)
+                    Text("off").foregroundStyle(Token.mutedForeground)
+                    Spacer(minLength: 8)
+                    FXButton("start shooting session", .outline, compact: true, haptic: .medium) {
+                        session.start(ble: ble, shutter: shutter)
+                    }
+                    .accessibilityIdentifier("session.start")
+                }
+            }
+            if let fault = session.fault {
+                Text(fault).font(Typeface.body(12)).foregroundStyle(Token.signal)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .font(Typeface.body(13))
+        .padding(.horizontal, Token.gutter)
+        .padding(.bottom, 10)
+        .transaction { $0.animation = nil }
+    }
+}
+
 /// Paired but not in range: the camera is off or asleep. Not a fault.
 private struct LinkLostStrip: View {
     @Environment(BLECameraController.self) private var ble
@@ -142,8 +188,11 @@ private struct Viewfinder: View {
                 if grid { ThirdsGrid().stroke(Token.foreground.opacity(0.2), lineWidth: 1).allowsHitTesting(false) }
                 chips
             } else {
+                // No live view: the map of where the photos on the card were taken.
+                PhotoMap(dimmed: !idle)
                 Rectangle()
                     .strokeBorder(Token.border, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .allowsHitTesting(false)
                 content
                     .padding(Token.gutter)
             }
@@ -152,15 +201,26 @@ private struct Viewfinder: View {
         .clipped()
     }
 
+    private var idle: Bool {
+        switch wifi.phase {
+        case .idle, .live: return true
+        default: return false
+        }
+    }
+
     @ViewBuilder private var content: some View {
         switch wifi.phase {
         case .idle, .live:
-            VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Spacer(minLength: 0)
                 FXButton("□ live view", .outline) { start() }
-                Text("the shutter works over bluetooth.\nlive view wakes the camera's wi-fi.")
-                    .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
-                    .multilineTextAlignment(.center)
+                    .background(Token.background)
+                Text("live view wakes the camera's wi-fi")
+                    .font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Token.background.opacity(0.8))
             }
+            .frame(maxWidth: .infinity)
         case .joining, .connecting:
             VStack(alignment: .leading, spacing: 10) {
                 Text("live view · waking").systemLabel()
@@ -216,7 +276,8 @@ private struct Viewfinder: View {
     }
 }
 
-private extension View {
+extension View {
+    /// A 32 pt chip over live view or the map: bone when lit.
     func chip(lit: Bool) -> some View {
         font(Typeface.body(12))
             .foregroundStyle(lit ? Token.ink : Token.foreground)

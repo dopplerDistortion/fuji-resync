@@ -12,6 +12,8 @@ struct ResyncApp: App {
     @State private var overlays = Overlays()
     @State private var nav = AppNav()
     @State private var shutter = ShutterState()
+    @State private var session = ShootingSession()
+    @State private var places = PhotoPlaces(filename: UITest.isOn ? "uitest-photo-places.json" : "photo-places.json")
 
     init() {
         AppLog.session()
@@ -42,6 +44,8 @@ struct ResyncApp: App {
                 .environment(overlays)
                 .environment(nav)
                 .environment(shutter)
+                .environment(session)
+                .environment(places)
                 .preferredColorScheme(.dark)
                 .tint(Token.foreground)
         }
@@ -93,6 +97,9 @@ struct RootView: View {
     @Environment(SendQueue.self) private var queue
     @Environment(Overlays.self) private var overlays
     @Environment(AppNav.self) private var nav
+    @Environment(ShootingSession.self) private var session
+    @Environment(ShutterState.self) private var shutter
+    @Environment(PhotoPlaces.self) private var places
     @AppStorage("booted") private var booted = false
     @AppStorage("wifiIdleMinutes") private var wifiIdleMinutes = 5
     @SceneStorage("tab") private var savedTab: String?
@@ -152,20 +159,28 @@ struct RootView: View {
     }
 
     private func restore() {
+        ble.onGeotag = { [places] loc in places.record(loc) }
         #if DEBUG
         if UITest.isOn {
             store.seedCameraForUITests()
+            places.seedForUITests()
             nav.tab = .recipes
             return
         }
         #endif
+        session.restore(ble: ble, shutter: shutter)
         // Existing installs that already paired skip the first-launch boot.
         if !booted, ble.savedCameraID != nil { booted = true }
         if let s = savedTab, let t = AppTab(rawValue: s) { nav.tab = t } else { nav.tab = ble.savedCameraID != nil ? .shoot : .recipes }
     }
 
     private func drain() {
-        Task { await queue.drain(usb: usb, store: store, overlays: overlays) }
+        Task {
+            await queue.drain(usb: usb, store: store, overlays: overlays)
+            // Then the map's pins: the GPS of every photo on the card not read before.
+            let read = await usb.readPhotoPlaces(skipping: places.checked)
+            if !read.checked.isEmpty { places.merge(read.places, checked: read.checked) }
+        }
     }
 
     /// Wi-Fi stays up when you leave the shoot tab and drops after the idle setting.

@@ -136,6 +136,13 @@ final class ResyncUITests: XCTestCase {
         button(beginningWith: "simulation").tap()
         let acros = button(beginningWith: "acros")
         XCTAssertTrue(acros.waitForExistence(timeout: 2))
+        // On shorter phones acros sits below the sheet's edge; scroll the list to it.
+        var scrolls = 0
+        while !acros.isHittable || acros.frame.maxY > app.frame.height - 40, scrolls < 6 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+            scrolls += 1
+        }
         snap("05 simulation sheet")
         acros.tap()
         XCTAssertTrue(el("stepper.mono warm/cool").waitForExistence(timeout: 2), "monochrome swaps color for warm/cool")
@@ -146,6 +153,20 @@ final class ResyncUITests: XCTestCase {
         let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 6, dy: 0))
         edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
         waitFor(el("path.current"), "label == 'recipes'")
+    }
+
+    func testShootMapShowsPhotoPins() {
+        launch()
+        tab("shoot")
+        XCTAssertTrue(el("map").waitForExistence(timeout: 3), "with no live view the viewfinder is a map")
+        let pins = app.descendants(matching: .any).matching(identifier: "map.pin")
+        XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
+        snap("10 shoot map")
+        pins.firstMatch.tap()
+        XCTAssertTrue(el("map.picked").waitForExistence(timeout: 2))
+        XCTAssertTrue(el("map.picked").label.contains("dscf01"))
+        snap("10 map pin")
     }
 
     func testLongPressOpensTheRowMenu() {

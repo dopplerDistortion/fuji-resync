@@ -132,6 +132,34 @@ final class USBCameraController: NSObject {
         }
     }
 
+    /// Reads the GPS of every photo on the card that isn't in `skipping`, newest first.
+    /// Returns the places found and every file name it looked at, with or without GPS.
+    func readPhotoPlaces(skipping: Set<String>, limit: Int = 1500) async -> (places: [PhotoPlace], checked: Set<String>) {
+        guard isReady, let camera else { return ([], []) }
+        let files = (camera.mediaFiles ?? [])
+            .compactMap { $0 as? ICCameraFile }
+            .filter { f in
+                let name = (f.name ?? "").lowercased()
+                return [".jpg", ".jpeg", ".hif", ".heif", ".raf"].contains { name.hasSuffix($0) } && !skipping.contains(name)
+            }
+            .suffix(limit)
+        guard !files.isEmpty else { return ([], []) }
+        busy = "reading photo locations"
+        defer { busy = nil }
+        var found: [PhotoPlace] = []
+        var checked: Set<String> = []
+        for f in files.reversed() {
+            let name = (f.name ?? "").lowercased()
+            let meta: [AnyHashable: Any]? = await withCheckedContinuation { cont in
+                f.requestMetadataDictionary(options: [:]) { dict, _ in cont.resume(returning: dict) }
+            }
+            checked.insert(name)
+            if let place = PhotoPlace.from(file: name, metadata: meta) { found.append(place) }
+        }
+        note("photo locations: \(found.count) of \(checked.count) files have gps")
+        return (found, checked)
+    }
+
     private func note(_ s: String) {
         AppLog.write(.usb, s)
         log.append(s)

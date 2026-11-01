@@ -40,6 +40,8 @@ final class BLECameraController: NSObject {
     }
 
     @ObservationIgnored let location = LocationProvider()
+    /// Called with every location sent to the camera, for the map's trail.
+    @ObservationIgnored var onGeotag: (@MainActor (CLLocation) -> Void)?
     @ObservationIgnored private var central: CBCentralManager!
     @ObservationIgnored private var peripheral: CBPeripheral?
     @ObservationIgnored private var characteristics: [String: CBCharacteristic] = [:]
@@ -181,6 +183,7 @@ final class BLECameraController: NSObject {
         note(String(format: "geotag → %.5f, %.5f ±%.0fm", loc.coordinate.latitude, loc.coordinate.longitude, loc.horizontalAccuracy))
         lastSync = Date()
         lastSentLocation = loc
+        onGeotag?(loc)
         syncCount += 1
     }
 

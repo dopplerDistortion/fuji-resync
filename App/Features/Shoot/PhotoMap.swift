@@ -44,7 +44,8 @@ struct PhotoMap: View {
             HStack(spacing: 6) {
                 HStack(spacing: 6) {
                     Text("■")
-                    Text(places.places.isEmpty ? "map · no photo locations yet" : "map · \(places.places.count) photos")
+                    Text((places.places.isEmpty ? "map · no photos pinned" : "map · \(places.places.count) photos")
+                        + (places.sent.isEmpty ? "" : " · □ \(places.sent.count) geotags"))
                 }
                 .chip(lit: false)
                 Spacer(minLength: 0)
@@ -59,7 +60,9 @@ struct PhotoMap: View {
                 }
             }
             if places.places.isEmpty {
-                Text("plug the camera in once to read where its photos were taken")
+                Text(places.readAt == nil
+                     ? "plug the camera in, in usb card reader mode, to pin where its photos were taken. □ marks where the phone sent the camera its location."
+                     : "card read \(places.checked.count) photos, none with a location. a photo gets one when the camera is linked as you shoot.")
                     .font(Typeface.body(12))
                     .foregroundStyle(Token.mutedForeground)
                     .padding(.horizontal, 9).padding(.vertical, 6)

@@ -92,7 +92,6 @@ struct RecipeEditorView: View {
                         Text(RecipeText.format(draft))
                             .font(Typeface.diagram)
                             .foregroundStyle(Token.mutedForeground)
-                            .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(14)
                     }

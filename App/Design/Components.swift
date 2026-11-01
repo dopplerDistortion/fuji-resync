@@ -755,22 +755,189 @@ struct FXField: View {
                 .tint(Token.foreground)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .onSubmit { focused = false }
             if text.isEmpty && !focused { BlinkingCursor(restart: focusCount) }
+            // Our own way off the keyboard, inside the field: no system toolbar pill.
+            if focused {
+                Button { focused = false; Haptic.play(.selection) } label: {
+                    Text("done")
+                        .font(Typeface.medium(12))
+                        .foregroundStyle(Token.ink)
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: 28)
+                        .background(Token.foreground)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("done editing")
+                .accessibilityIdentifier("field.done")
+            }
         }
         .padding(.horizontal, 10)
         .frame(minHeight: 44)
         .background(Token.background)
         .overlay(Rectangle().strokeBorder(focused ? Token.foreground : Token.input, lineWidth: 1))
         .onChange(of: focused) { _, f in if f { focusCount += 1 } }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                if focused {
-                    Spacer()
-                    Button("done") { focused = false }
-                        .font(Typeface.medium(15))
-                        .foregroundStyle(Token.foreground)
+    }
+}
+
+// MARK: Swipe row
+
+/// One action behind a swipe row: `send` in signal, `copy` in muted, `delete` in signal.
+struct SwipeAction {
+    enum Tone { case signal, muted }
+    var title: String
+    var tone: Tone = .muted
+    var run: () -> Void
+}
+
+private struct SwipingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True while a swipe row is being dragged sideways or stands open, so its row stops
+    /// lighting bone under the finger.
+    var swiping: Bool {
+        get { self[SwipingKey.self] }
+        set { self[SwipingKey.self] = newValue }
+    }
+}
+
+/// A row that slides sideways in 8 pt steps to show its actions: one on the leading side,
+/// which a long swipe runs outright, and up to two on the trailing side. It settles open or
+/// shut in one cut, never a spring. One row stands open at a time; a tap on it shuts it.
+/// VoiceOver gets every action as a named action on the row.
+struct SwipeRow<ID: Hashable, Content: View>: View {
+    var id: ID
+    @Binding var open: ID?
+    var leading: SwipeAction?
+    var trailing: [SwipeAction] = []
+    @ViewBuilder var content: Content
+
+    @State private var side: HorizontalEdge = .trailing
+    @State private var drag: CGFloat = 0
+    @State private var axis: Axis?
+    @State private var width: CGFloat = 390
+    @State private var armed = false
+
+    private let cell: CGFloat = 84
+    private var leadWidth: CGFloat { leading == nil ? 0 : cell }
+    private var trailWidth: CGFloat { cell * CGFloat(trailing.count) }
+    private var isOpen: Bool { open == id }
+    private var settled: CGFloat { isOpen ? (side == .leading ? leadWidth : -trailWidth) : 0 }
+    /// A long swipe past this runs the leading action.
+    private var fullSwipe: CGFloat { width * 0.55 }
+
+    var body: some View {
+        let x = clamp(settled + drag)
+        content
+            .environment(\.swiping, axis == .horizontal || isOpen)
+            .accessibilityActions {
+                if let leading { Button(leading.title) { leading.run() } }
+                ForEach(Array(trailing.enumerated()), id: \.offset) { _, a in Button(a.title) { a.run() } }
+            }
+            .overlay {
+                if isOpen {
+                    // A tap on an open row shuts it rather than opening it.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { shut() }
+                        .accessibilityHidden(true)
                 }
             }
+            .offset(x: x)
+            .background { actions(at: x) }
+            .clipped()
+            .background {
+                GeometryReader { g in
+                    Color.clear
+                        .onAppear { width = g.size.width }
+                        .onChange(of: g.size.width) { _, w in width = w }
+                }
+            }
+            .simultaneousGesture(swipe)
+            .transaction { $0.animation = nil }
+    }
+
+    /// The cells behind the row, sized to it. Only drawn while the row is off center.
+    @ViewBuilder private func actions(at x: CGFloat) -> some View {
+        if x > 0, let leading {
+            HStack(spacing: 0) {
+                actionCell(leading, width: max(leadWidth, x), mark: armed ? "↵ " : "")
+                Spacer(minLength: 0)
+            }
+        } else if x < 0 {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                ForEach(Array(trailing.enumerated()), id: \.offset) { _, a in actionCell(a, width: cell) }
+            }
         }
+    }
+
+    private func clamp(_ x: CGFloat) -> CGFloat {
+        min(leading == nil ? 0 : width, max(trailing.isEmpty ? 0 : -(trailWidth + 24), x))
+    }
+
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 14, coordinateSpace: .local)
+            .onChanged { v in
+                if axis == nil {
+                    axis = abs(v.translation.width) > abs(v.translation.height) * 1.3 ? .horizontal : .vertical
+                    if axis == .horizontal, open != nil, !isOpen { open = nil }
+                }
+                guard axis == .horizontal else { return }
+                drag = (v.translation.width / 8).rounded(.towardZero) * 8
+                let past = leading != nil && settled + drag > fullSwipe
+                if past != armed {
+                    armed = past
+                    Haptic.play(.light)
+                }
+            }
+            .onEnded { v in
+                defer { axis = nil; drag = 0; armed = false }
+                guard axis == .horizontal else { return }
+                let x = settled + v.translation.width
+                let fling = settled + v.predictedEndTranslation.width
+                if let leading, x > fullSwipe {
+                    open = nil
+                    Haptic.play(.medium)
+                    leading.run()
+                } else if leading != nil, x > leadWidth * 0.5 || (x > 0 && fling > leadWidth) {
+                    side = .leading
+                    open = id
+                } else if !trailing.isEmpty, x < -trailWidth * 0.4 || (x < 0 && fling < -trailWidth) {
+                    side = .trailing
+                    open = id
+                } else if isOpen {
+                    open = nil
+                }
+            }
+    }
+
+    private func shut() {
+        open = nil
+        Haptic.play(.selection)
+    }
+
+    private func actionCell(_ a: SwipeAction, width: CGFloat, mark: String = "") -> some View {
+        Button {
+            open = nil
+            Haptic.play(.selection)
+            a.run()
+        } label: {
+            Text(mark + a.title)
+                .font(Typeface.medium(13))
+                .foregroundStyle(Token.foreground)
+                .frame(width: width)
+                .frame(maxHeight: .infinity)
+                .background(a.tone == .signal ? Token.signal : Token.muted)
+                .overlay(alignment: .leading) { Rectangle().fill(Token.background).frame(width: Token.rule) }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(a.title)
     }
 }

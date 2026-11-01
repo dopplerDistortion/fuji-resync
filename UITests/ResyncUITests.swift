@@ -141,6 +141,26 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(el("stepper.mono warm/cool").waitForExistence(timeout: 2), "monochrome swaps color for warm/cool")
         waitFor(el("editor.save"), "label BEGINSWITH 'saved'")
         snap("05 editor acros")
+
+        // Our own back swipe: a drag from the left edge cuts back to the list.
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 6, dy: 0))
+        edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
+        waitFor(el("path.current"), "label == 'recipes'")
+    }
+
+    func testLongPressOpensTheRowMenu() {
+        launch()
+        let r = row(containing: "kodachrome")
+        XCTAssertTrue(r.waitForExistence(timeout: 3))
+        r.press(forDuration: 0.9)
+        let dup = button(beginningWith: "duplicate")
+        XCTAssertTrue(dup.waitForExistence(timeout: 2), "the long press opens our menu, not the system's")
+        XCTAssertTrue(button(beginningWith: "share as text").exists)
+        snap("09 row menu")
+        dup.tap()
+        XCTAssertTrue(el("toast").waitForExistence(timeout: 2))
+        XCTAssertEqual(el("path.current").label, "recipes", "the release after a long press doesn't open the recipe")
+        XCTAssertEqual(rows.count, 4)
     }
 
     func testSendQueuesAWriteUntilTheCableIsIn() {
@@ -154,7 +174,8 @@ final class ResyncUITests: XCTestCase {
         button(beginningWith: "queue for c6").tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'waits for the cable'")).firstMatch.waitForExistence(timeout: 2))
         snap("06 queued")
-        app.swipeDown(velocity: .fast)
+        el("sheet.close").tap()
+        XCTAssertFalse(el("sheet.close").waitForExistence(timeout: 1), "a tap above the sheet closes it")
         XCTAssertTrue(el("tab.badge").waitForExistence(timeout: 2))
         XCTAssertEqual(el("tab.badge").label, "1 queued")
     }
@@ -164,7 +185,10 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 3))
         let count = rows.count
         row(containing: "classic negative").swipeLeft()
-        app.buttons["delete"].tap()
+        let delete = app.buttons["delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 2))
+        snap("07 swiped")
+        delete.tap()
         XCTAssertEqual(rows.count, count - 1)
         let undo = app.buttons["undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 2))

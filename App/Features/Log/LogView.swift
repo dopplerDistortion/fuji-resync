@@ -87,7 +87,6 @@ struct LogView: View {
                             LogLine(line: line)
                         }
                     }
-                    .textSelection(.enabled)
                 }
             }
             .padding(14)

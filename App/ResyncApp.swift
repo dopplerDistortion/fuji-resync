@@ -15,7 +15,8 @@ struct ResyncApp: App {
 
     init() {
         AppLog.session()
-        // The app draws its own path bar and tab bar; keep any system bar that slips through dark.
+        // The app draws its own path bar, tab bar and overlays. The file picker and the share
+        // sheet are Apple's; give their bars the system's ink and type.
         let label = UIFont(name: "GeistMono-Medium", size: 13) ?? .monospacedSystemFont(ofSize: 13, weight: .medium)
         let nav = UINavigationBarAppearance()
         nav.configureWithOpaqueBackground()
@@ -25,9 +26,7 @@ struct ResyncApp: App {
         UINavigationBar.appearance().standardAppearance = nav
         UINavigationBar.appearance().scrollEdgeAppearance = nav
         UINavigationBar.appearance().tintColor = UIColor(Token.foreground)
-        // Keyboard toolbar, text selection and switches in the system's ink.
-        UIToolbar.appearance().barTintColor = UIColor(Token.card)
-        UIToolbar.appearance().tintColor = UIColor(Token.foreground)
+        // Text cursors in the system's ink.
         UITextField.appearance().tintColor = UIColor(Token.foreground)
         UITextView.appearance().tintColor = UIColor(Token.foreground)
     }
@@ -102,12 +101,16 @@ struct RootView: View {
         Group {
             if booted {
                 VStack(spacing: 0) {
-                    TabView(selection: $nav.tab) {
-                        ShootView().tag(AppTab.shoot).toolbar(.hidden, for: .tabBar)
-                        RecipesTab().tag(AppTab.recipes).toolbar(.hidden, for: .tabBar)
-                        CameraView().tag(AppTab.camera).toolbar(.hidden, for: .tabBar)
-                        LogView().tag(AppTab.log).toolbar(.hidden, for: .tabBar)
+                    // Only the current tab is built; a switch is a hard cut.
+                    Group {
+                        switch nav.tab {
+                        case .shoot: ShootView()
+                        case .recipes: RecipesTab()
+                        case .camera: CameraView()
+                        case .log: LogView()
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .overlay { OverlayHost(bottomInset: nav.chromeHidden ? 120 : 74) }
                     if !nav.chromeHidden, !keyboardUp {
                         TabBar(selection: $nav.tab, badge: queue.open.count)
@@ -172,17 +175,5 @@ struct RootView: View {
             AppLog.write(.wifi, "live view idle \(minutes) min, closing")
             wifi.disconnect()
         }
-    }
-}
-
-// Swipe-back keeps working with the system navigation bar hidden.
-extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
-    override open func viewDidLoad() {
-        super.viewDidLoad()
-        interactivePopGestureRecognizer?.delegate = self
-    }
-
-    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        viewControllers.count > 1
     }
 }

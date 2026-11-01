@@ -3,28 +3,68 @@ import SwiftUI
 import FujiKit
 import UniformTypeIdentifiers
 
-/// The recipes tab: the library list and the editor, pushed with hard cuts.
+/// The recipes tab: the library list and the editor, pushed and popped with hard cuts. A drag
+/// from the left edge pulls the editor aside in 8 pt steps over the list, and lets go with
+/// a cut either way.
 struct RecipesTab: View {
     @Environment(AppNav.self) private var nav
     @Environment(RecipeStore.self) private var store
+    @State private var pull: CGFloat = 0
 
     var body: some View {
-        @Bindable var nav = nav
-        NavigationStack(path: $nav.recipes) {
-            RecipeListView()
-                .navigationDestination(for: RecipeRoute.self) { route in
-                    switch route {
-                    case let .edit(id):
-                        if let r = store.recipe(id) {
-                            RecipeEditorView(recipe: r)
-                        } else {
-                            GoneView()
+        let top = nav.recipes.last
+        GeometryReader { g in
+            ZStack {
+                RecipeListView()
+                    .allowsHitTesting(top == nil)
+                    .accessibilityHidden(top != nil)
+                if let top {
+                    destination(top)
+                        .id(top)
+                        .background(Token.background.ignoresSafeArea())
+                        .overlay(alignment: .leading) {
+                            if pull > 0 { Rectangle().fill(Token.foreground).frame(width: Token.rule).ignoresSafeArea() }
                         }
-                    case let .new(id):
-                        RecipeEditorView(recipe: store.recipe(id) ?? Recipe(id: id, name: "untitled"), isNew: store.recipe(id) == nil)
-                    }
+                        .offset(x: pull)
+                        .overlay(alignment: .leading) { edge(width: g.size.width) }
                 }
+            }
+            .frame(width: g.size.width, height: g.size.height)
         }
+        .transaction { $0.animation = nil }
+    }
+
+    @ViewBuilder private func destination(_ route: RecipeRoute) -> some View {
+        switch route {
+        case let .edit(id):
+            if let r = store.recipe(id) {
+                RecipeEditorView(recipe: r)
+            } else {
+                GoneView()
+            }
+        case let .new(id):
+            RecipeEditorView(recipe: store.recipe(id) ?? Recipe(id: id, name: "untitled"), isNew: store.recipe(id) == nil)
+        }
+    }
+
+    /// The strip along the left edge that takes the back swipe.
+    private func edge(width: CGFloat) -> some View {
+        Color.clear
+            .frame(width: 16)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                    .onChanged { v in pull = max(0, (v.translation.width / 8).rounded(.down) * 8) }
+                    .onEnded { v in
+                        let back = v.translation.width > width * 0.33 || v.predictedEndTranslation.width > width * 0.6
+                        pull = 0
+                        if back {
+                            Haptic.play(.selection)
+                            nav.cut { _ = nav.recipes.popLast() }
+                        }
+                    }
+            )
+            .accessibilityHidden(true)
     }
 }
 
@@ -53,6 +93,9 @@ struct RecipeListView: View {
     @State private var importing = false
     @State private var more = false
     @State private var sending: Recipe?
+    @State private var swiped: UUID?
+    @State private var rowMenu: UUID?
+    @State private var heldRow: UUID?
 
     private var filtered: [Recipe] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -76,42 +119,39 @@ struct RecipeListView: View {
 
     var body: some View {
         TabScreen(path: ["recipes"]) {
-            List {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                     header
-                        .listRowInsets(EdgeInsets(top: 14, leading: Token.gutter, bottom: 10, trailing: Token.gutter))
+                        .padding(.horizontal, Token.gutter)
+                        .padding(.top, 14).padding(.bottom, 10)
                     if !missing.isEmpty || store.camera == nil {
                         pullBar
-                            .listRowInsets(EdgeInsets(top: 0, leading: Token.gutter, bottom: 12, trailing: Token.gutter))
+                            .padding(.horizontal, Token.gutter)
+                            .padding(.bottom, 12)
                     }
                     if let err = store.lastError {
                         FaultPanel(title: "save", message: err)
-                            .listRowInsets(EdgeInsets(top: 0, leading: Token.gutter, bottom: 12, trailing: Token.gutter))
+                            .padding(.horizontal, Token.gutter)
+                            .padding(.bottom, 12)
                     }
                     if filtered.isEmpty {
                         Text(store.recipes.isEmpty ? "> no recipes yet. tap new, import a file, or pull c1–c7 from the camera."
                                                    : "> nothing matches. clear the search or the filter.")
                             .font(Typeface.body(14)).foregroundStyle(Token.mutedForeground)
-                            .listRowInsets(EdgeInsets(top: 8, leading: Token.gutter, bottom: 8, trailing: Token.gutter))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, Token.gutter)
+                            .padding(.vertical, 8)
                     }
-                }
-                .listRowBackground(Token.background)
-                .listRowSeparator(.hidden)
-
-                Section {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { i, r in
-                        row(r)
-                            .stepIn(i)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Token.background)
-                            .listRowSeparator(.hidden)
+                        row(r).stepIn(i)
                     }
                 }
+                .padding(.bottom, 16)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.immediately)
             .background(Token.background)
-            .environment(\.defaultMinListRowHeight, 1)
         } bottom: {
             BottomBar {
                 FXField(text: $query, prompt: "grep recipes", mark: "/")
@@ -211,32 +251,39 @@ struct RecipeListView: View {
     private func row(_ r: Recipe) -> some View {
         let slots = store.slots(for: r)
         let state: SlotBadge.State = !slots.isEmpty ? .inCamera(slots) : (queue.queuedSlot(for: r).map { .queued($0) } ?? .none)
-        return Button {
-            nav.cut { nav.recipes.append(.edit(r.id)) }
-        } label: {
-            EmptyView()
-        }
-        .buttonStyle(RecipeRowStyle(recipe: r, state: state, unsupported: !r.filmSimulation.onXT30II))
-        .accessibilityIdentifier("recipe.row")
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button { sending = r } label: { Text("send") }
-                .tint(Token.signal)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button { delete(r) } label: { Text("delete") }
-                .tint(Token.signal)
+        return SwipeRow(id: r.id, open: $swiped,
+                        leading: SwipeAction(title: "send", tone: .signal) { sending = r },
+                        trailing: [
+                            SwipeAction(title: "copy") { duplicate(r) },
+                            SwipeAction(title: "delete", tone: .signal) { delete(r) },
+                        ]) {
             Button {
-                let copy = store.duplicate(r)
-                overlays.toast("duplicated \(r.name.lowercased())", action: "open") { nav.open(copy.id) }
-            } label: { Text("copy") }
-                .tint(Token.muted)
+                // A long press opens the row's menu; the release that ends it isn't a tap.
+                if heldRow == r.id { heldRow = nil; return }
+                nav.cut { nav.recipes.append(.edit(r.id)) }
+            } label: {
+                EmptyView()
+            }
+            .buttonStyle(RecipeRowStyle(recipe: r, state: state, unsupported: !r.filmSimulation.onXT30II))
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                heldRow = r.id
+                Haptic.play(.medium)
+                rowMenu = r.id
+                Task { try? await Task.sleep(nanoseconds: 1_500_000_000); if heldRow == r.id { heldRow = nil } }
+            })
+            .accessibilityIdentifier("recipe.row")
+            .fxMenu(isPresented: Binding(get: { rowMenu == r.id }, set: { if !$0, rowMenu == r.id { rowMenu = nil } }), items: [
+                FXMenuItem(title: "send to camera", meta: slots.isEmpty ? "" : slots.map { "c\($0)" }.joined(separator: " ")) { sending = r },
+                FXMenuItem(title: "duplicate", meta: "copy") { duplicate(r) },
+                FXMenuItem(title: "share as text", meta: "txt") { ShareSheet.present([RecipeText.format(r)]) },
+                FXMenuItem(title: "delete", meta: "undo for 5 s") { delete(r) },
+            ])
         }
-        .contextMenu {
-            Button("send to camera") { sending = r }
-            Button("duplicate") { _ = store.duplicate(r) }
-            Button("share as text") { ShareSheet.present([RecipeText.format(r)]) }
-            Button("delete", role: .destructive) { delete(r) }
-        }
+    }
+
+    private func duplicate(_ r: Recipe) {
+        let copy = store.duplicate(r)
+        overlays.toast("duplicated \(r.name.lowercased())", action: "open") { nav.open(copy.id) }
     }
 
     private var menu: [FXMenuItem] {
@@ -314,7 +361,19 @@ private struct RecipeRowStyle: ButtonStyle {
     var unsupported: Bool
 
     func makeBody(configuration: Configuration) -> some View {
-        let lit = configuration.isPressed
+        RecipeRowLabel(recipe: recipe, state: state, unsupported: unsupported, pressed: configuration.isPressed)
+    }
+}
+
+private struct RecipeRowLabel: View {
+    var recipe: Recipe
+    var state: SlotBadge.State
+    var unsupported: Bool
+    var pressed: Bool
+    @Environment(\.swiping) private var swiping
+
+    var body: some View {
+        let lit = pressed && !swiping
         return HStack(spacing: 12) {
             Text(">").font(Typeface.body(15)).opacity(lit ? 1 : 0).accessibilityHidden(true)
                 .frame(width: 10)

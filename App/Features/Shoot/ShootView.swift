@@ -40,7 +40,6 @@ struct ShootView: View {
             }
         }
         .background(Token.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func faultScreen(title: String, line: String, message: String, settings: Bool = false) -> some View {

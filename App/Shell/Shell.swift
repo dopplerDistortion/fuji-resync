@@ -67,7 +67,6 @@ struct TabScreen<Content: View, Trailing: View, Bottom: View>: View {
             bottom
         }
         .background(Token.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
     }
 }
 

@@ -321,7 +321,6 @@ private struct SlotDetail: View {
                 Text(r.name.lowercased()).font(Typeface.medium(16)).padding(.horizontal, Token.gutter)
                 Text(RecipeText.format(r))
                     .font(Typeface.diagram).foregroundStyle(Token.mutedForeground)
-                    .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, Token.gutter)
                 FXButton("save to library", grow: true) {

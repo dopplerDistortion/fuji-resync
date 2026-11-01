@@ -48,7 +48,10 @@
 	<key>NSCameraUsageDescription</key>
 	<string>resync reads and writes the custom settings on a camera connected over USB-C.</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 	<key>UISupportedInterfaceOrientations</key>

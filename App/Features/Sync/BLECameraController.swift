@@ -6,7 +6,8 @@ import FujiKit
 
 /// Bluetooth link to the camera: pairing, automatic location + time sync, and a shutter remote.
 ///
-/// The camera asks for a location over the geotag-request characteristic; we answer with the
+/// The camera asks for a location over the geotag-request characteristic, about every 10 s while
+/// linked (not once per photo); we answer with the
 /// phone's latest fix. iOS keeps this running in the background thanks to the
 /// `bluetooth-central` and `location` background modes.
 @MainActor

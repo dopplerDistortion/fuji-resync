@@ -298,7 +298,7 @@ struct BootView: View {
     private var locationPanel: some View {
         Panel(title: "location", meta: "for geotags") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("the camera asks for your location each time it saves a photo. resync answers in the background, so pick always allow on the next prompt.")
+                Text("the camera asks for your location every few seconds while it is linked. resync answers in the background, so pick always allow on the next prompt.")
                     .font(Typeface.body(14)).fixedSize(horizontal: false, vertical: true)
                 FXButton(explainedLocation ? "open the shoot tab" : "continue", grow: true) {
                     if explainedLocation {

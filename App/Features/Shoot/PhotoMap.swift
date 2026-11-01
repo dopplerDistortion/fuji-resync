@@ -134,29 +134,36 @@ private struct PinMark: View {
     var label: String?
 
     var body: some View {
-        HStack(spacing: 3) {
-            Rectangle()
-                .fill(lit ? Token.background : Token.foreground)
-                .frame(width: 10, height: 10)
-                .overlay(Rectangle().strokeBorder(lit ? Token.foreground : Token.ink, lineWidth: 1))
-            if count > 1 {
-                Text("\(count)")
-                    .font(Typeface.medium(10))
-                    .foregroundStyle(Token.foreground)
-                    .padding(.horizontal, 2)
-                    .background(Token.background.opacity(0.8))
+        // Only the square takes part in layout, so it stays centred on the coordinate; the
+        // count and the tag hang off it as overlays.
+        Rectangle()
+            .fill(lit ? Token.background : Token.foreground)
+            .frame(width: 10, height: 10)
+            .overlay(Rectangle().strokeBorder(lit ? Token.foreground : Token.ink, lineWidth: 1))
+            .overlay(alignment: .leading) {
+                if count > 1 {
+                    Text("\(count)")
+                        .font(Typeface.medium(10))
+                        .foregroundStyle(Token.foreground)
+                        .padding(.horizontal, 2)
+                        .background(Token.background.opacity(0.8))
+                        .fixedSize()
+                        .offset(x: 13)
+                }
             }
-            if let label {
-                Text(label)
-                    .font(Typeface.body(11))
-                    .foregroundStyle(Token.ink)
-                    .lineLimit(1)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(Token.foreground)
-                    .fixedSize()
-                    .accessibilityIdentifier("map.picked")
+            .overlay(alignment: .bottom) {
+                if let label {
+                    Text(label)
+                        .font(Typeface.body(11))
+                        .foregroundStyle(Token.ink)
+                        .lineLimit(1)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Token.foreground)
+                        .fixedSize()
+                        .offset(y: -16)
+                        .accessibilityIdentifier("map.picked")
+                }
             }
-        }
         .frame(minWidth: 28, minHeight: 28)
         .contentShape(Rectangle())
     }

@@ -1,3 +1,6 @@
+import MapKit
+import SwiftUI
+
 /// Where the photos on the card were taken: on your Mapbox style when a token is set, else on
 /// Apple's map in greyscale. The pins and chips are ours: a bone square per place (a count when several photos
 /// share it), a small hollow square for each location resync sent the camera, and a shooting

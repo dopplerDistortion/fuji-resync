@@ -76,9 +76,26 @@ final class USBCameraController: NSObject {
                 if status == .authorized {
                     self.phase = .searching
                     if !self.browser.isBrowsing { self.browser.start() }
+                    self.requestContents()
                 } else {
                     self.phase = .needsPermission
                 }
+            }
+        }
+        #endif
+    }
+
+    /// Photos on the card are a separate permission from camera control: without it the card
+    /// lists no files, so the map has nothing to pin.
+    private(set) var contentsAllowed: Bool?
+
+    private func requestContents() {
+        #if !targetEnvironment(simulator)
+        browser.requestContentsAuthorization { [weak self] status in
+            Task { @MainActor in
+                guard let self else { return }
+                self.contentsAllowed = status == .authorized
+                self.note("photo access: \(status == .authorized ? "allowed" : "not allowed")")
             }
         }
         #endif
@@ -136,13 +153,14 @@ final class USBCameraController: NSObject {
     /// Returns the places found and every file name it looked at, with or without GPS.
     func readPhotoPlaces(skipping: Set<String>, limit: Int = 1500) async -> (places: [PhotoPlace], checked: Set<String>) {
         guard isReady, let camera else { return ([], []) }
-        let files = (camera.mediaFiles ?? [])
-            .compactMap { $0 as? ICCameraFile }
-            .filter { f in
-                let name = (f.name ?? "").lowercased()
-                return [".jpg", ".jpeg", ".hif", ".heif", ".raf"].contains { name.hasSuffix($0) } && !skipping.contains(name)
-            }
-            .suffix(limit)
+        let all = (camera.mediaFiles ?? []).compactMap { $0 as? ICCameraFile }
+        let photos = all.filter { f in
+            let name = (f.name ?? "").lowercased()
+            return [".jpg", ".jpeg", ".hif", ".heif", ".raf"].contains { name.hasSuffix($0) }
+        }
+        let files = photos.filter { !skipping.contains(($0.name ?? "").lowercased()) }.suffix(limit)
+        note("card: \(all.count) files listed, \(photos.count) photos, \(files.count) not read yet"
+            + (contentsAllowed == false ? " · photo access not allowed" : ""))
         guard !files.isEmpty else { return ([], []) }
         busy = "reading photo locations"
         defer { busy = nil }

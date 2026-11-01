@@ -43,6 +43,8 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>resync talks to your camera over Bluetooth to send location and time and to fire the shutter.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>resync reads where the photos on your camera's card were taken, to pin them on the map.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>resync sends your location to the camera so photos are geotagged.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

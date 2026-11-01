@@ -147,6 +147,8 @@ struct RootView: View {
         .onChange(of: usb.slots) { _, slots in store.updateCamera(slots) }
         // The queue drains the moment a camera is ready on USB.
         .onChange(of: usb.isReady) { _, ready in if ready { drain() } }
+        // Photo access can arrive after the camera is ready.
+        .onChange(of: usb.contentsAllowed) { _, ok in if ok == true, usb.isReady { Task { await readPlaces() } } }
         .onChange(of: queue.kick) { _, _ in
             if usb.isReady { drain() } else { usb.start() }
         }
@@ -177,10 +179,14 @@ struct RootView: View {
     private func drain() {
         Task {
             await queue.drain(usb: usb, store: store, overlays: overlays)
-            // Then the map's pins: the GPS of every photo on the card not read before.
-            let read = await usb.readPhotoPlaces(skipping: places.checked)
-            if !read.checked.isEmpty { places.merge(read.places, checked: read.checked) }
+            await readPlaces()
         }
+    }
+
+    /// The map's pins: the GPS of every photo on the card not read before.
+    private func readPlaces() async {
+        let read = await usb.readPhotoPlaces(skipping: places.checked)
+        if !read.checked.isEmpty { places.merge(read.places, checked: read.checked) }
     }
 
     /// Wi-Fi stays up when you leave the shoot tab and drops after the idle setting.

@@ -7,6 +7,7 @@ import SwiftUI
 struct PhotoMap: View {
     var dimmed: Bool
     @Environment(PhotoPlaces.self) private var places
+    @Environment(USBCameraController.self) private var usb
     @State private var position: MapCameraPosition = .automatic
     @State private var picked: String?
     @State private var centre: CLLocationCoordinate2D?
@@ -61,6 +62,8 @@ struct PhotoMap: View {
             if !dimmed { chips(pins) }
         }
         .transaction { $0.animation = nil }
+        // Listen for the cable from here too, so plugging in on the shoot tab fills the map.
+        .onAppear { usb.start() }
     }
 
     private func chips(_ pins: [Pin]) -> some View {

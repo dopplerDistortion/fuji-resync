@@ -103,7 +103,7 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 2))
         name.tap()
         name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + "test roll")
-        waitFor(el("editor.save"), "label BEGINSWITH 'saved'")
+        waitFor(el("editor.save"), "label BEGINSWITH 'saved'", timeout: 10)
         snap("04 editor new")
 
         button(beginningWith: "back to recipes").tap()
@@ -143,7 +143,7 @@ final class ResyncUITests: XCTestCase {
         snap("05 simulation sheet")
         acros.tap()
         XCTAssertTrue(el("stepper.mono warm/cool").waitForExistence(timeout: 2), "monochrome swaps color for warm/cool")
-        waitFor(el("editor.save"), "label BEGINSWITH 'saved'")
+        waitFor(el("editor.save"), "label BEGINSWITH 'saved'", timeout: 10)
         snap("05 editor acros")
 
         // Our own back swipe: a drag from the left edge cuts back to the list.

@@ -10,6 +10,7 @@ struct ResyncApp: App {
     @State private var wifi = WiFiRemoteController()
 
     init() {
+        AppLog.session()
         let nav = UINavigationBarAppearance()
         nav.configureWithOpaqueBackground()
         nav.backgroundColor = UIColor(Token.background)

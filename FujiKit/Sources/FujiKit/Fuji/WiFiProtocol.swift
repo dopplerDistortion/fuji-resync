@@ -107,9 +107,9 @@ public actor FujiRemoteSession {
     }
 
     /// - Parameter command: the 55740 stream, before anything has been sent on it.
-    public init(command: ByteStream) {
+    public init(command: ByteStream, trace: (@Sendable (String) -> Void)? = nil) {
         self.command = command
-        self.session = PTPSession(transport: StreamPTPTransport(stream: command, firstTransactionID: 1))
+        self.session = PTPSession(transport: StreamPTPTransport(stream: command, firstTransactionID: 1), trace: trace)
     }
 
     /// Runs the handshake. `onStatus` receives short human-readable progress lines.
@@ -159,7 +159,7 @@ public actor FujiRemoteSession {
     public func stopLiveView() async throws {
         guard openCaptureActive else { return }
         openCaptureActive = false
-        _ = try await session.transport.execute(PTPCommand(.terminateOpenCapture, [0]), dataOut: nil)
+        _ = try await session.exec(PTPCommand(.terminateOpenCapture, [0]))
     }
 
     /// Takes a picture with the current camera settings.
@@ -175,7 +175,7 @@ public actor FujiRemoteSession {
 
     public func disconnect() async {
         try? await stopLiveView()
-        _ = try? await session.transport.execute(PTPCommand(.closeSession), dataOut: nil)
+        _ = try? await session.exec(PTPCommand(.closeSession))
     }
 
     private func pollState(until done: (FujiWiFi.CameraState?) -> Bool, timeout: TimeInterval = 60) async throws {

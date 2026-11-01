@@ -115,6 +115,16 @@ struct AboutView: View {
                 LeaderRow(label: "martian mono", value: "display")
                 LeaderRow(label: "geist mono", value: "body")
             }
+            Panel(title: "logs", meta: "documents/resync.log") {
+                Text("everything the app does with the camera is written here. share it when something goes wrong.")
+                    .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    ShareLink(item: AppLog.fileURL) { Text("share log") }
+                        .buttonStyle(.fx(.default, compact: true))
+                    Button("clear") { AppLog.clear() }.buttonStyle(.fx(.ghost))
+                }
+            }
             Text("not affiliated with fujifilm. writing custom settings uses an undocumented protocol: keep the camera powered and the cable in until it finishes.")
                 .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
         }

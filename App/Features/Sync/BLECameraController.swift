@@ -143,6 +143,7 @@ final class BLECameraController: NSObject {
             altitude: loc.verticalAccuracy >= 0 ? loc.altitude : 0, date: Date()
         )
         p.writeValue(packet, for: c, type: .withResponse)
+        note(String(format: "geotag → %.5f, %.5f ±%.0fm", loc.coordinate.latitude, loc.coordinate.longitude, loc.horizontalAccuracy))
         lastSync = Date()
         lastSentLocation = loc
         syncCount += 1
@@ -205,6 +206,7 @@ final class BLECameraController: NSObject {
 
     private func didUpdate(_ c: CBCharacteristic, value: Data, on p: CBPeripheral) {
         let id = c.uuid.uuidString.uppercased()
+        AppLog.write(.ble, "← \(id.prefix(8)) \(value.hex)")
         if id == FujiBLE.Characteristic.geotagRequest, value.starts(with: FujiBLE.geotagRequested) {
             guard autoSync else { return }
             if let loc = location.latest, loc.timestamp.timeIntervalSinceNow > -120 { send(loc) }
@@ -215,6 +217,7 @@ final class BLECameraController: NSObject {
     }
 
     private func note(_ s: String) {
+        AppLog.write(.ble, s)
         log.append(s)
         if log.count > 100 { log.removeFirst(log.count - 100) }
     }

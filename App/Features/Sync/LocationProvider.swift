@@ -57,7 +57,11 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        AppLog.write(.ble, "location error: \(error.localizedDescription)")
+    }
 
-    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {}
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        AppLog.write(.ble, "location authorization: \(manager.authorizationStatus.rawValue)")
+    }
 }

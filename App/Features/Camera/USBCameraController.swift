@@ -119,6 +119,7 @@ final class USBCameraController: NSObject {
     }
 
     private func note(_ s: String) {
+        AppLog.write(.usb, s)
         log.append(s)
         if log.count > 200 { log.removeFirst(log.count - 200) }
     }
@@ -141,7 +142,7 @@ final class USBCameraController: NSObject {
     fileprivate func sessionReady(_ cam: ICCameraDevice) {
         guard cam === camera else { return }
         let name = cam.name ?? "camera"
-        service = PresetService(session: PTPSession(transport: ICCPTPTransport(camera: cam)))
+        service = PresetService(session: PTPSession(transport: ICCPTPTransport(camera: cam), trace: { AppLog.write(.usb, $0) }))
         phase = .ready(name)
         note("session open with \(name)")
         Task { await refreshSlots() }

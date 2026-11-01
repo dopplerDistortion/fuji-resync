@@ -56,7 +56,7 @@ final class WiFiRemoteController {
             let cmd = TCPStream(host: FujiWiFi.host, port: FujiWiFi.commandPort)
             try await cmd.open()
             command = cmd
-            let session = FujiRemoteSession(command: cmd)
+            let session = FujiRemoteSession(command: cmd, trace: { AppLog.write(.wifi, $0) })
             remote = session
             try await session.connect(clientName: "resync") { [weak self] s in
                 Task { @MainActor in self?.note(s) }
@@ -140,6 +140,7 @@ final class WiFiRemoteController {
     }
 
     private func note(_ s: String) {
+        AppLog.write(.wifi, s)
         log.append(s)
         if log.count > 100 { log.removeFirst(log.count - 100) }
     }

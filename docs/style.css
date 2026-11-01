@@ -1,0 +1,35 @@
+/* goksen.ing tokens, dark only, square corners. */
+:root {
+  --background: #0B0B0C; --foreground: #E6E3DE; --card: #131314; --muted: #8C8A86;
+  --border: #2A2A2B; --signal: #FF3B30; --warn: #F5B400; --mark: #5C5B58;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { background: var(--background); }
+body { margin: 0; background: var(--background); color: var(--foreground);
+  font: 400 16px/1.6 "Geist Mono", ui-monospace, monospace; }
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+a { color: var(--foreground); text-decoration-color: var(--mark); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--warn); }
+.path { font: 500 11px/1 "Geist Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 48px; }
+.path span { color: var(--foreground); }
+.path a { color: var(--muted); text-decoration: none; }
+h1 { font: 300 40px/1.1 "Martian Mono", monospace; font-stretch: 112.5%; margin: 0 0 16px; letter-spacing: -.01em; }
+h2 { font: 500 11px/1 "Geist Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  border-top: 1px solid var(--border); padding-top: 16px; margin: 48px 0 16px; }
+.lede { font-size: 18px; }
+.meta { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+.rows { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.rows dt { font-weight: 500; padding-top: 12px; border-top: 1px solid var(--border); }
+.rows dt::before { content: "■ "; color: var(--warn); font-size: 10px; vertical-align: 2px; }
+.rows dd { margin: 4px 0 12px; color: var(--muted); }
+.button { display: inline-block; background: var(--foreground); color: var(--background); padding: 10px 16px;
+  text-decoration: none; font-weight: 500; }
+.button:hover { background: var(--warn); }
+footer { margin-top: 64px; border-top: 1px solid var(--border); padding-top: 16px; color: var(--muted); font-size: 13px; }
+footer a { color: var(--muted); }
+@media (min-width: 640px) {
+  .rows { grid-template-columns: 200px minmax(0, 1fr); }
+  .rows dt, .rows dd { border-top: 1px solid var(--border); padding: 12px 0; margin: 0; }
+  .rows dd { padding-left: 16px; }
+}

@@ -5,3 +5,4 @@ DerivedData/
 .build/
 .swiftpm/
 Config/Local.xcconfig
+build/

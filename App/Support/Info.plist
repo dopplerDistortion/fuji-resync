@@ -34,6 +34,8 @@
 	</array>
 	<key>MBXAccessToken</key>
 	<string>$(MAPBOX_ACCESS_TOKEN)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSSupportsLiveActivities</key>
@@ -44,17 +46,17 @@
 		<string>location</string>
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>resync talks to your camera over Bluetooth to send location and time and to fire the shutter.</string>
+	<string>resync pairs with your camera over Bluetooth so it can send the camera your location and the time for its photos, and fire the shutter.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>resync reads where the photos on your camera's card were taken, to pin them on the map.</string>
+	<string>resync reads the location saved in the photos on your camera's card, when it's connected by USB-C, to pin them on the map.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>resync sends your location to the camera so photos are geotagged, and records a shooting session's route for the map.</string>
+	<string>resync sends your location to your paired camera so its photos are geotagged, and records a shooting session's route to show on the map.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Allow always so photos keep getting geotagged while the phone is in your pocket.</string>
+	<string>The camera asks the phone for its location about every ten seconds, also while the phone is locked in your pocket. Allow always so photos keep getting geotagged after resync goes to the background.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>resync connects to the camera's Wi-Fi for live view and the remote shutter.</string>
+	<string>resync connects to your camera's own Wi-Fi network for live view and the remote shutter.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>resync reads and writes the custom settings on a camera connected over USB-C.</string>
+	<string>resync reads and writes the custom settings (C1–C7) on a camera connected to your phone by USB-C.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

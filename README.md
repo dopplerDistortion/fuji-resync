@@ -25,6 +25,7 @@ Run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 
 - **Signing:** set `DEVELOPMENT_TEAM` in `Config/Local.xcconfig`. Any team, free or paid, can sign the default build. If the phone isn't on the camera's `FUJIFILM-…` network, join it in Settings → Wi-Fi before starting live view.
 - **Paid developer team:** also set `RESYNC_ENTITLEMENTS = App/Support/Resync-Hotspot.entitlements` in `Config/Local.xcconfig` and run `xcodegen generate`. The app then joins the camera's network by itself when live view starts. Personal (free) teams can't sign this entitlement.
+- **7-day limit:** apps signed by a personal team expire after 7 days. Build again from Xcode to refresh it.
 - **Protocol tests:** `cd FujiKit && swift test`. These need no device.
 
 ## camera setup

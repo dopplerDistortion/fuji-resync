@@ -8,7 +8,7 @@ A personal iPhone companion for the Fujifilm X-T30 II, styled with the [goksen.i
 | **sync**: automatic location and time for geotags | Bluetooth LE, the camera asks and the phone answers |
 | **remote**: live view and shutter | the camera's own Wi-Fi (`192.168.0.1`, ports 55740–55742) |
 
-There's no official SDK, so the app relies on reverse-engineered protocols. Nothing here has been tested on a real X-T30 II yet. See [what's verified](#status).
+There's no official SDK, so the app relies on reverse-engineered protocols. Most of it now runs on a real X-T30 II and iPhone. See [what's verified](#status).
 
 ## build
 
@@ -69,13 +69,24 @@ Widgets/            the widget extension: the shooting session's Live Activity
 
 ## status
 
-| part | state |
+Tested on an X-T30 II with an iPhone:
+
+| part | source |
 |---|---|
-| custom-setting property map (0xD18C–0xD1A5) | from filmkit's captures on an X100VI. The Fuji X Weekly app writes the same slots on an X-T30 II, so it should work. |
-| auto white priority WB code `0x8020` | a guess, not yet verified |
-| Bluetooth geotag/shutter | from furble, where it's verified on the X-T30, X-S10 and X-E4 |
-| photo GPS over USB (ImageCaptureCore metadata) | not yet tested on this body, and may need USB CARD READER mode |
-| Wi-Fi remote handshake | from libfuji. Live view framing (18-byte header + JPEG) not yet tested on this body |
+| Bluetooth pairing and GPS/time sync | from furble |
+| recipe reads and writes over USB (C1–C7, 0xD18C–0xD1A5) | from filmkit's X100VI captures |
+| remote shutter and live view over Wi-Fi | from libfuji |
+| photo GPS over USB (ImageCaptureCore metadata) | |
+| session photo count from the card's EXIF times | |
+
+Not yet tested on the camera:
+
+| part | note |
+|---|---|
+| one-tap pull of C1–C7 into the library | |
+| the white balance C3, C6 and C7 use | auto white priority is sent as `0x8020`, a guess |
+| route recording during a shooting session | runs on the phone only |
+| the 8 on-camera tests in the capability map | Wi-Fi double shot, BLE read-poll, BLE backup download, Wi-Fi state snapshot, Wi-Fi gallery and EXIF, Wi-Fi recipe probe, USB RAW CONV extras, BLE power-off standby |
 
 If the camera rejects a property, the write report lists its code and the value that was sent, which makes it straightforward to fix.
 

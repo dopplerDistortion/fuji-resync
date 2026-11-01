@@ -25,7 +25,7 @@ struct PhotoMap: View {
                 }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate, anchor: .center) {
-                        PinMark(count: pin.photos.count, lit: picked == pin.id)
+                        PinMark(count: pin.photos.count, lit: picked == pin.id, label: picked == pin.id ? pin.label : nil)
                             .onTapGesture {
                                 picked = picked == pin.id ? nil : pin.id
                                 Haptic.play(.selection)
@@ -43,6 +43,10 @@ struct PhotoMap: View {
                         .overlay(Rectangle().fill(Token.foreground).frame(width: 4, height: 4))
                 }
             }
+            // Fit and the legal label keep clear of our chips above and the live view button below.
+            .safeAreaPadding(.top, 52)
+            .safeAreaPadding(.bottom, 72)
+            .safeAreaPadding(.horizontal, 12)
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
             .environment(\.colorScheme, .dark)
             .saturation(0)
@@ -74,11 +78,7 @@ struct PhotoMap: View {
                         .accessibilityLabel("fit every pin")
                 }
             }
-            if let p = pins.first(where: { $0.id == picked }) {
-                Text(p.label).chip(lit: true)
-                    .lineLimit(1)
-                    .accessibilityIdentifier("map.picked")
-            } else if places.places.isEmpty {
+            if places.places.isEmpty {
                 Text("plug the camera in once to read where its photos were taken")
                     .font(Typeface.body(12))
                     .foregroundStyle(Token.mutedForeground)
@@ -126,10 +126,12 @@ private struct Pin: Identifiable {
     }
 }
 
-/// A 10 pt bone square with an ink edge; inverted when picked; the count beside it.
+/// A 10 pt bone square with an ink edge; inverted when picked, with its file and time in a
+/// bone tag beside it; the count beside it when several photos share it.
 private struct PinMark: View {
     var count: Int
     var lit: Bool
+    var label: String?
 
     var body: some View {
         HStack(spacing: 3) {
@@ -143,6 +145,16 @@ private struct PinMark: View {
                     .foregroundStyle(Token.foreground)
                     .padding(.horizontal, 2)
                     .background(Token.background.opacity(0.8))
+            }
+            if let label {
+                Text(label)
+                    .font(Typeface.body(11))
+                    .foregroundStyle(Token.ink)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(Token.foreground)
+                    .fixedSize()
+                    .accessibilityIdentifier("map.picked")
             }
         }
         .frame(minWidth: 28, minHeight: 28)

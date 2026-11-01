@@ -163,7 +163,7 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
         snap("10 shoot map")
-        pins.firstMatch.tap()
+        pins.element(boundBy: 0).tap()
         XCTAssertTrue(el("map.picked").waitForExistence(timeout: 2))
         XCTAssertTrue(el("map.picked").label.contains("dscf01"))
         snap("10 map pin")

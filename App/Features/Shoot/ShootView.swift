@@ -215,10 +215,7 @@ private struct Viewfinder: View {
                 Spacer(minLength: 0)
                 FXButton("□ live view", .outline) { start() }
                     .background(Token.background)
-                Text("live view wakes the camera's wi-fi")
-                    .font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Token.background.opacity(0.8))
+                    .accessibilityHint("wakes the camera's wi-fi")
             }
             .frame(maxWidth: .infinity)
         case .joining, .connecting:

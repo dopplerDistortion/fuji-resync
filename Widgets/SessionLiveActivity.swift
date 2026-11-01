@@ -141,6 +141,8 @@ private struct Row: View {
             DottedRule().stroke(Token.mark, style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
                 .frame(height: 1)
             Text(value).foregroundStyle(Token.foreground).lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .layoutPriority(1)
         }
         .font(.custom("GeistMono-Regular", size: 13))
     }
@@ -161,5 +163,5 @@ private func geotag(_ s: SessionAttributes.ContentState) -> String {
     guard s.geotagOn else { return "off" }
     guard let t = s.lastGeotag else { return "waiting for the camera" }
     let time = t.formatted(date: .omitted, time: .shortened).lowercased()
-    return "synced " + time + (s.accuracy.map { " · ±\($0) m" } ?? "")
+    return time + (s.accuracy.map { " · ±\($0)m" } ?? "")
 }

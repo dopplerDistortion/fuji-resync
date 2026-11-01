@@ -4,7 +4,7 @@ import FujiKit
 
 @main
 struct ResyncApp: App {
-    @State private var store = RecipeStore()
+    @State private var store = RecipeStore(filename: UITest.storeFilename())
     @State private var usb = USBCameraController()
     @State private var ble = BLECameraController()
     @State private var wifi = WiFiRemoteController()
@@ -141,6 +141,13 @@ struct RootView: View {
     }
 
     private func restore() {
+        #if DEBUG
+        if UITest.isOn {
+            store.seedCameraForUITests()
+            nav.tab = .recipes
+            return
+        }
+        #endif
         // Existing installs that already paired skip the first-launch boot.
         if !booted, ble.savedCameraID != nil { booted = true }
         if let s = savedTab, let t = AppTab(rawValue: s) { nav.tab = t } else { nav.tab = ble.savedCameraID != nil ? .shoot : .recipes }

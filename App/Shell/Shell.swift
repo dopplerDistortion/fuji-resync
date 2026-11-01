@@ -35,12 +35,14 @@ struct TabBar: View {
                                 .overlay(Rectangle().strokeBorder(Token.foreground, lineWidth: 1))
                                 .offset(x: 30, y: 8)
                                 .accessibilityLabel("\(badge) queued")
+                                .accessibilityIdentifier("tab.badge")
                         }
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selection == t ? [.isSelected, .isButton] : .isButton)
+                .accessibilityIdentifier("tab.\(t.rawValue)")
             }
         }
         .background(Token.background)

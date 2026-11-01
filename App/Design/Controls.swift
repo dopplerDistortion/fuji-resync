@@ -98,25 +98,27 @@ extension View {
 /// `label ┄┄ [ON|off]`: two cells, the bone fill moves in one step.
 struct FXToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 10) {
-            configuration.label
-                .font(Typeface.body(14)).foregroundStyle(Token.foreground)
-            Leader()
-            Button {
-                configuration.isOn.toggle()
-                Haptic.play(.selection)
-            } label: {
+        Button {
+            configuration.isOn.toggle()
+            Haptic.play(.selection)
+        } label: {
+            HStack(spacing: 10) {
+                configuration.label
+                    .font(Typeface.body(15)).foregroundStyle(Token.foreground)
+                Leader()
                 HStack(spacing: 0) {
                     cell("on", lit: configuration.isOn, fill: Token.foreground, ink: Token.ink)
                     cell("off", lit: !configuration.isOn, fill: Token.muted, ink: Token.foreground)
                 }
                 .overlay(Rectangle().strokeBorder(Token.input, lineWidth: 1))
+                .accessibilityHidden(true)
             }
-            .buttonStyle(.plain)
-            .transaction { $0.animation = nil }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 48)
+        .buttonStyle(.plain)
+        .transaction { $0.animation = nil }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isToggle)
         .accessibilityValue(configuration.isOn ? "on" : "off")
@@ -297,6 +299,7 @@ private struct ToastView: View {
             try? await Task.sleep(nanoseconds: UInt64(toast.duration * 1e9))
             if overlays.toast == toast { overlays.dismissToast() }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("toast")
     }
 }

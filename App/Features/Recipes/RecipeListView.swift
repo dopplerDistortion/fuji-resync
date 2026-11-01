@@ -152,6 +152,7 @@ struct RecipeListView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(filter == f ? .isSelected : [])
+                    .accessibilityIdentifier(f == .all ? "filter.all" : "filter.inCamera")
                 }
                 Spacer(minLength: 0)
             }
@@ -183,6 +184,7 @@ struct RecipeListView: View {
         }
         .buttonStyle(.plain)
         .disabled(pulling)
+        .accessibilityIdentifier("pullbar")
         .feedIn()
     }
 
@@ -205,6 +207,7 @@ struct RecipeListView: View {
             EmptyView()
         }
         .buttonStyle(RecipeRowStyle(recipe: r, state: state, unsupported: !r.filmSimulation.onXT30II))
+        .accessibilityIdentifier("recipe.row")
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button { sending = r } label: { Text("send") }
                 .tint(Token.signal)

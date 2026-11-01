@@ -26,6 +26,7 @@ Run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 - **Signing:** set `DEVELOPMENT_TEAM` in `Config/Local.xcconfig`. Any team, free or paid, can sign the default build. If the phone isn't on the camera's `FUJIFILM-…` network, join it in Settings → Wi-Fi before starting live view.
 - **Paid developer team:** also set `RESYNC_ENTITLEMENTS = App/Support/Resync-Hotspot.entitlements` in `Config/Local.xcconfig` and run `xcodegen generate`. The app then joins the camera's network by itself when live view starts. Personal (free) teams can't sign this entitlement.
 - **7-day limit:** apps signed by a personal team expire after 7 days. Build again from Xcode to refresh it.
+- **UI tests:** `xcodebuild -project Resync.xcodeproj -scheme Resync -destination 'platform=iOS Simulator,name=iPhone 18 Pro' test`. They launch the app with `-uitest`: a fresh library of the starter recipes, C1–C3 plus an unknown C5 as if read from the camera, and no permission prompts. Screenshots are attached to the result bundle.
 - **Protocol tests:** `cd FujiKit && swift test`. These need no device.
 
 ## camera setup

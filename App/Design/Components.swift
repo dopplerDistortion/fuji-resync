@@ -95,6 +95,7 @@ struct PathBar<Trailing: View>: View {
                 .foregroundStyle(Token.foreground)
                 .truncationMode(.middle)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("path.current")
         } else {
             Button {
                 taps[index, default: 0] += 1
@@ -494,6 +495,7 @@ struct ValueStepper: View {
             @unknown default: break
             }
         }
+        .accessibilityIdentifier("stepper.\(label)")
         .fxSheet(isPresented: $picking, title: label) {
             ValueGrid(values: values, current: value, format: format) { v in
                 value = v; bumps += 1; picking = false

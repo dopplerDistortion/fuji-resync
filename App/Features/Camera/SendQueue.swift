@@ -182,7 +182,7 @@ final class SendQueue {
 
     /// Queued writes can finish with the app in the background; ask once, the first time one is queued.
     private func askForNotifications() {
-        guard !askedForNotifications else { return }
+        guard !askedForNotifications, !UITest.isOn else { return }
         askedForNotifications = true
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }

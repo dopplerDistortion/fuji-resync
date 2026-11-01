@@ -17,8 +17,8 @@ struct LogView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     Panel(title: "settings") {
                         VStack(spacing: 0) {
-                            Toggle("haptics", isOn: $haptics).toggleStyle(.fx)
-                            Toggle("geotag photos", isOn: Binding(get: { ble.autoSync }, set: { ble.autoSync = $0 })).toggleStyle(.fx)
+                            Toggle("haptics", isOn: $haptics).toggleStyle(.fx).accessibilityIdentifier("setting.haptics")
+                            Toggle("geotag photos", isOn: Binding(get: { ble.autoSync }, set: { ble.autoSync = $0 })).toggleStyle(.fx).accessibilityIdentifier("setting.geotag")
                             Segmented(label: "wi-fi idle", selection: $wifiIdle, options: [1, 5, 15]) { "\($0) min" }
                         }
                     }

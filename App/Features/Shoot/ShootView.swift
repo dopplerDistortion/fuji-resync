@@ -415,6 +415,7 @@ private struct ShutterButton: View {
         )
         .accessibilityElement()
         .accessibilityLabel("shutter")
+        .accessibilityIdentifier("shutter")
         .accessibilityHint("hold to focus, release to fire, keep holding for bulb")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { tapFire() }

@@ -35,10 +35,25 @@ targets:
         CODE_SIGN_ENTITLEMENTS: $(RESYNC_ENTITLEMENTS)
         INFOPLIST_FILE: App/Support/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+  ResyncUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Resync
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ing.goksen.resync.uitests
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Resync
+        CODE_SIGN_ENTITLEMENTS: ""
 schemes:
   Resync:
     build:
       targets:
         Resync: all
     test:
-      targets: []
+      targets:
+        - ResyncUITests

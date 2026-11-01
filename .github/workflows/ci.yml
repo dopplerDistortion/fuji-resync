@@ -19,3 +19,22 @@ jobs:
           xcodebuild -project Resync.xcodeproj -scheme Resync \
             -destination 'generic/platform=iOS Simulator' \
             -quiet CODE_SIGNING_ALLOWED=NO build
+      - name: UI tests (simulator)
+        run: |
+          DEVICE=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [0-9]+( Pro)? \(' | sed 's/ ($//')
+          echo "simulator: $DEVICE"
+          xcodebuild -project Resync.xcodeproj -scheme Resync \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -resultBundlePath UITests.xcresult \
+            CODE_SIGNING_ALLOWED=NO test
+      - name: Export UI test screenshots
+        if: always()
+        run: |
+          mkdir -p ui-screenshots
+          xcrun xcresulttool export attachments --path UITests.xcresult --output-path ui-screenshots || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: ui-screenshots
+          if-no-files-found: ignore

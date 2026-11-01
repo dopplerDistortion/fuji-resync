@@ -274,6 +274,7 @@ private struct SaveMark: View {
         .lineLimit(1)
         .frame(minHeight: 44)
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("editor.save")
     }
 }
 

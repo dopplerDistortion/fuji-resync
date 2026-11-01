@@ -412,6 +412,7 @@ struct SendSheet: View {
         }
         .buttonStyle(.plain)
         .transaction { $0.animation = nil }
+        .accessibilityIdentifier("slot.c\(n)")
         .accessibilityLabel("slot \(n), \(name ?? "unknown")\(on.contains(n) ? ", already holds this recipe" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

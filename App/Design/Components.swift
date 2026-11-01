@@ -131,7 +131,7 @@ struct LeaderRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(mark).foregroundStyle(Token.mark).accessibilityHidden(true)
-            Text(label).foregroundStyle(Token.foreground).lineLimit(2)
+            Text(label).foregroundStyle(Token.foreground).lineLimit(2).layoutPriority(1)
             Leader().accessibilityHidden(true)
             Text(value).foregroundStyle(valueColor).lineLimit(1)
         }
@@ -465,7 +465,7 @@ struct ValueStepper: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(label).font(Typeface.body(14)).foregroundStyle(Token.foreground).lineLimit(1)
+            Text(label).font(Typeface.body(14)).foregroundStyle(Token.foreground).lineLimit(1).layoutPriority(1)
             Leader()
             RepeatButton(symbol: "−", label: "decrease \(label)", enabled: value > range.lowerBound) { nudge(-1) }
             Button { picking = true; Haptic.play(.selection) } label: {
@@ -626,7 +626,7 @@ struct MenuRow<T: Hashable & Identifiable>: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(label).font(Typeface.body(14)).foregroundStyle(Token.foreground).lineLimit(1)
+            Text(label).font(Typeface.body(14)).foregroundStyle(Token.foreground).lineLimit(1).layoutPriority(1)
             Leader()
             Button { open = true; Haptic.play(.selection) } label: {
                 HStack(spacing: 8) {

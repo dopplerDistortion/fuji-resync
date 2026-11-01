@@ -134,7 +134,7 @@ struct LeaderRow: View {
             Leader().accessibilityHidden(true)
             Text(value).foregroundStyle(valueColor).lineLimit(1)
         }
-        .font(Typeface.body(14))
+        .font(Typeface.body(15))
         .padding(.horizontal, 14)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
@@ -170,7 +170,7 @@ struct ListingHeader: View {
             if let extra { Text("· \(extra)").foregroundStyle(Token.mutedForeground) }
             Spacer(minLength: 0)
         }
-        .font(Typeface.body(13))
+        .font(Typeface.body(14))
         .lineLimit(1)
     }
 }

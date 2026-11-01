@@ -41,7 +41,7 @@ private struct GoneView: View {
 }
 
 struct RecipeListView: View {
-    enum Filter: String, CaseIterable { case all, inCamera = "in camera", library = "library only" }
+    enum Filter: String, CaseIterable { case all, inCamera = "in camera" }
 
     @Environment(RecipeStore.self) private var store
     @Environment(SendQueue.self) private var queue
@@ -60,7 +60,6 @@ struct RecipeListView: View {
             switch filter {
             case .all: break
             case .inCamera: if store.slots(for: r).isEmpty { return false }
-            case .library: if !store.slots(for: r).isEmpty { return false }
             }
             guard !q.isEmpty else { return true }
             return r.name.lowercased().contains(q) || r.filmSimulation.label.lowercased().contains(q)
@@ -115,9 +114,9 @@ struct RecipeListView: View {
             .environment(\.defaultMinListRowHeight, 1)
         } bottom: {
             BottomBar {
-                FXField(text: $query, prompt: "grep", mark: "/")
+                FXField(text: $query, prompt: "grep recipes", mark: "/")
                 FXButton("new", compact: true) { newRecipe() }
-                FXButton("···", .outline, compact: true, haptic: .selection) { more = true }
+                FXButton("…", .outline, compact: true, haptic: .selection) { more = true }
                     .accessibilityLabel("more")
                     .fxMenu(isPresented: $more, items: menu)
             }
@@ -133,21 +132,23 @@ struct RecipeListView: View {
     // MARK: Pieces
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             ListingHeader(path: "/recipes", count: store.recipes.count, extra: "\(inCamera) in camera")
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 ForEach(Filter.allCases, id: \.self) { f in
+                    let n = f == .all ? store.recipes.count : inCamera
                     Button {
                         filter = f
                         Haptic.play(.selection)
                     } label: {
-                        Text(f.rawValue)
-                            .font(Typeface.body(12))
+                        Text("\(f.rawValue) \(n)")
+                            .font(Typeface.body(13))
                             .padding(.horizontal, 10)
-                            .frame(minHeight: 32)
+                            .frame(minHeight: 34)
                             .foregroundStyle(filter == f ? Token.ink : Token.foreground)
                             .background(filter == f ? Token.foreground : .clear)
                             .overlay(Rectangle().strokeBorder(filter == f ? Token.foreground : Token.input, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(filter == f ? .isSelected : [])
@@ -158,28 +159,39 @@ struct RecipeListView: View {
         }
     }
 
-    /// One action from camera to library. Shown while the camera holds something the library lacks.
+    /// One action from camera to library: a dashed bar while the camera holds slots the library lacks.
     private var pullBar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                if store.camera == nil {
-                    Text("camera never read").font(Typeface.body(13))
-                    Text("plug it in once to mark what's in c1–c7").font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
-                } else {
-                    Text(missing.map { "c\($0)" }.joined(separator: " ") + (missing.count == 1 ? " isn't" : " aren't") + " in the library")
-                        .font(Typeface.body(13))
-                    Text(usb.isReady ? "camera on the cable" : "pulls when the camera is plugged in")
-                        .font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
+        Button { pull() } label: {
+            HStack(spacing: 12) {
+                Text("C1-7")
+                    .font(Typeface.medium(10))
+                    .padding(.horizontal, 4)
+                    .frame(minHeight: 20)
+                    .overlay(Rectangle().strokeBorder(Token.foreground, style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(pulling ? "pulling c1–c7" : "pull c1–c7 to library").font(Typeface.body(15))
+                    Text(pullDetail).font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 0)
+                if pulling { BlinkMark() } else { Text("↓").foregroundStyle(Token.mutedForeground) }
             }
-            Spacer(minLength: 0)
-            FXButton(pulling ? "pulling" : "pull c1–c7", .outline, compact: true) { pull() }
-                .disabled(pulling)
+            .foregroundStyle(Token.foreground)
+            .padding(12)
+            .overlay(Rectangle().strokeBorder(Token.mutedForeground, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .contentShape(Rectangle())
         }
-        .padding(10)
-        .background(Token.card)
-        .overlay(Rectangle().strokeBorder(Token.border, lineWidth: 1))
+        .buttonStyle(.plain)
+        .disabled(pulling)
         .feedIn()
+    }
+
+    private var pullDetail: String {
+        guard let cam = store.camera else { return "plug in the camera once to mark what's on it" }
+        let read = "read " + cam.readAt.formatted(date: .omitted, time: .shortened).lowercased()
+        let n = missing.count
+        let lead = "\(n) in the camera \(n == 1 ? "isn't" : "aren't") in your library"
+        return (usb.isReady ? lead : lead + " · pulls when plugged in") + " · " + read
     }
 
     private var pulling: Bool { queue.open.contains { $0.kind == .pull } }
@@ -282,7 +294,7 @@ struct RecipeListView: View {
     }
 }
 
-/// `[C3] classic chrome summer ┄┄ classic chrome >`. Fills bone while pressed.
+/// `> kodachrome 64 / classic chrome · dr200 ………… [C3]`. Fills bone and shows `>` while pressed.
 private struct RecipeRowStyle: ButtonStyle {
     var recipe: Recipe
     var state: SlotBadge.State
@@ -291,28 +303,34 @@ private struct RecipeRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let lit = configuration.isPressed
         return HStack(spacing: 12) {
-            SlotBadge(state: state)
-                .inverted(lit)
-            VStack(alignment: .leading, spacing: 2) {
+            Text(">").font(Typeface.body(15)).opacity(lit ? 1 : 0).accessibilityHidden(true)
+                .frame(width: 10)
+            VStack(alignment: .leading, spacing: 3) {
                 Text(recipe.name.lowercased())
-                    .font(Typeface.body(15))
+                    .font(Typeface.body(16))
                     .lineLimit(1)
-                Text(recipe.filmSimulation.label.lowercased() + (unsupported ? " · not on x-t30 ii" : ""))
-                    .font(Typeface.body(12))
+                Text(subtitle)
+                    .font(Typeface.body(13))
                     .foregroundStyle(lit ? Token.ink.opacity(0.7) : (unsupported ? Token.signal : Token.mutedForeground))
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            Text(">").foregroundStyle(lit ? Token.ink : Token.mark).accessibilityHidden(true)
+            SlotBadge(state: state)
+                .inverted(lit)
         }
         .foregroundStyle(lit ? Token.ink : Token.foreground)
         .padding(.horizontal, Token.gutter)
-        .frame(minHeight: 56)
+        .frame(minHeight: 60)
         .background(lit ? Token.foreground : Token.background)
-        .overlay(alignment: .bottom) { Rectangle().fill(Token.border).frame(height: 1) }
         .contentShape(Rectangle())
         .transaction { $0.animation = nil }
         .accessibilityElement(children: .combine)
+    }
+
+    private var subtitle: String {
+        var parts = [recipe.filmSimulation.label.lowercased(), recipe.dynamicRange.label.lowercased()]
+        if unsupported { parts.append("not on x-t30 ii") }
+        return parts.joined(separator: " · ")
     }
 }
 

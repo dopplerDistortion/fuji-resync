@@ -1,10 +1,11 @@
 import UIKit
 import SwiftUI
+import FujiKit
 
-/// The shoot tab: shutter over Bluetooth (half-press, bulb, self-timer) and live view over Wi-Fi.
+/// The shoot tab, as in the prototype: a geotag strip, a viewfinder that takes the screen, and
+/// one row of recipe chip, square shutter and timer. Live view lives inside the viewfinder.
 struct ShootView: View {
     @Environment(BLECameraController.self) private var ble
-    @Environment(WiFiRemoteController.self) private var wifi
     @Environment(AppNav.self) private var nav
 
     var body: some View {
@@ -20,23 +21,20 @@ struct ShootView: View {
                 FullBleed()
             } else {
                 TabScreen(path: ["shoot"]) {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            if ble.savedCameraID == nil {
-                                PairPanel()
-                            } else if !ble.isLinked {
-                                LinkLostPanel()
-                            }
-                            Viewfinder(expand: { nav.cut { nav.chromeHidden = true } })
-                            WiFiPanel()
-                            ShootFacts()
+                    VStack(spacing: 0) {
+                        GeotagStrip()
+                        if ble.savedCameraID == nil {
+                            ScrollView { PairPanel().padding(Token.gutter) }
+                                .scrollIndicators(.hidden)
+                        } else {
+                            if !ble.isLinked { LinkLostStrip() }
+                            Viewfinder(full: false)
+                                .padding(.horizontal, Token.gutter)
+                                .padding(.bottom, 12)
                         }
-                        .padding(.horizontal, Token.gutter)
-                        .padding(.vertical, 16)
                     }
-                    .scrollIndicators(.hidden)
                 } bottom: {
-                    ShutterBar()
+                    ShutterRow()
                 }
             }
         }
@@ -57,117 +55,190 @@ struct ShootView: View {
     }
 }
 
-// MARK: Link lost
+// MARK: Strips
 
-/// The camera is paired but not in range: not a fault, the camera is just off or asleep.
-private struct LinkLostPanel: View {
+/// `geotag · synced 10:42 · ±4 m ………… frames 0012`
+private struct GeotagStrip: View {
+    @Environment(BLECameraController.self) private var ble
+    @Environment(ShutterState.self) private var shutter
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("geotag").foregroundStyle(Token.mutedForeground)
+            Text("·").foregroundStyle(Token.mark)
+            Text(geotag).foregroundStyle(ble.isLinked && ble.lastSync != nil ? Token.foreground : Token.mutedForeground)
+            Spacer(minLength: 8)
+            Text("frames").foregroundStyle(Token.mutedForeground)
+            Text(String(format: "%04d", shutter.shots)).foregroundStyle(Token.foreground).monospacedDigit()
+        }
+        .font(Typeface.body(13))
+        .lineLimit(1)
+        .padding(.horizontal, Token.gutter)
+        .frame(height: 38)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var geotag: String {
+        guard ble.savedCameraID != nil else { return "not paired" }
+        guard ble.isLinked else { return "paused" }
+        guard ble.autoSync else { return "off" }
+        guard let t = ble.lastSync else { return "waiting for the camera" }
+        let acc = ble.lastSentLocation.map { " · ±\(Int($0.horizontalAccuracy)) m" } ?? ""
+        return "synced " + t.formatted(date: .omitted, time: .shortened).lowercased() + acc
+    }
+}
+
+/// Paired but not in range: the camera is off or asleep. Not a fault.
+private struct LinkLostStrip: View {
     @Environment(BLECameraController.self) private var ble
 
     var body: some View {
-        Panel(title: "link", meta: "paused") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    if case .connecting = ble.phase { BlinkMark() } else if case .scanning = ble.phase { ScanGlyph() } else {
-                        Text("■").foregroundStyle(Token.mark).accessibilityHidden(true)
-                    }
-                    Text(text).foregroundStyle(Token.mutedForeground)
-                }
-                .font(Typeface.body(13))
-                Text("geotags and the shutter wait for the camera. switch it on; resync reconnects by itself.")
-                    .font(Typeface.body(14)).fixedSize(horizontal: false, vertical: true)
-                if case let .fault(msg) = ble.phase {
-                    Text(msg).font(Typeface.body(13)).foregroundStyle(Token.signal)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                FXButton("reconnect now", .outline, compact: true) { ble.reconnect() }
+        HStack(spacing: 8) {
+            switch ble.phase {
+            case .connecting: BlinkMark()
+            case .scanning: ScanGlyph()
+            case .fault: Text("■").foregroundStyle(Token.signal)
+            default: Text("■").foregroundStyle(Token.mark)
             }
-            .padding(14)
+            Text(text).foregroundStyle(Token.mutedForeground).lineLimit(1)
+            Spacer(minLength: 8)
+            FXButton("reconnect", .outline, compact: true) { ble.reconnect() }
         }
+        .font(Typeface.body(13))
+        .padding(.horizontal, Token.gutter)
+        .padding(.bottom, 8)
         .feedIn()
     }
 
     private var text: String {
         switch ble.phase {
-        case .connecting: return "reconnecting"
+        case .connecting: return "reconnecting to the camera"
         case .scanning: return "looking for the camera"
-        case .fault: return "link dropped"
-        default: return "camera not in range"
+        case .fault: return "link dropped · shutter paused"
+        default: return "camera not in range · shutter paused"
         }
     }
 }
 
 // MARK: Viewfinder
 
+/// Dashed while asleep, with `□ live view` in the middle. Types the wake log while it connects,
+/// then shows frames with the live chips on top.
 private struct Viewfinder: View {
-    var expand: () -> Void
+    var full: Bool
     @Environment(WiFiRemoteController.self) private var wifi
+    @Environment(AppNav.self) private var nav
+    @AppStorage("thirdsGrid") private var grid = true
 
     var body: some View {
         ZStack {
-            Rectangle().fill(Token.card)
-            if let f = wifi.frame {
-                Image(uiImage: f).resizable().scaledToFit()
+            if wifi.isLive || wifi.frame != nil {
+                Color.black
+                if let f = wifi.frame {
+                    Image(uiImage: f).resizable().scaledToFit()
+                } else {
+                    Text("waiting for frames").systemLabel()
+                }
+                if grid { ThirdsGrid().stroke(Token.foreground.opacity(0.2), lineWidth: 1).allowsHitTesting(false) }
+                chips
             } else {
-                VStack(spacing: 6) {
-                    Text(wifi.isLive ? "waiting for frames" : "no signal").systemLabel()
-                    if !wifi.isLive {
-                        Text("live view sleeps until you start it").font(Typeface.body(12)).foregroundStyle(Token.mark)
-                    }
-                }
-            }
-            ThirdsGrid().stroke(Token.foreground.opacity(0.18), lineWidth: 1)
-            if wifi.isLive {
-                VStack {
-                    HStack {
-                        StatusMark(state: .live, text: String(format: "live · %.0f fps", wifi.fps))
-                        Spacer()
-                        Text("⤢ full").font(Typeface.body(12)).foregroundStyle(Token.foreground)
-                    }
-                    Spacer()
-                }
-                .padding(10)
+                Rectangle()
+                    .strokeBorder(Token.border, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                content
+                    .padding(Token.gutter)
             }
         }
-        .aspectRatio(3 / 2, contentMode: .fit)
-        .overlay(Rectangle().strokeBorder(Token.border, lineWidth: 1))
-        .cropMarks()
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard wifi.isLive else { return }
-            Haptic.play(.selection)
-            expand()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+    }
+
+    @ViewBuilder private var content: some View {
+        switch wifi.phase {
+        case .idle, .live:
+            VStack(spacing: 18) {
+                FXButton("□ live view", .outline) { start() }
+                Text("the shutter works over bluetooth.\nlive view wakes the camera's wi-fi.")
+                    .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                    .multilineTextAlignment(.center)
+            }
+        case .joining, .connecting:
+            VStack(alignment: .leading, spacing: 10) {
+                Text("live view · waking").systemLabel()
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(wifi.log.suffix(5).enumerated()), id: \.offset) { _, line in
+                        TypedText(text: line.lowercased())
+                    }
+                    BlinkingCursor()
+                }
+                .font(Typeface.diagram)
+                .foregroundStyle(Token.foreground)
+                .lineLimit(1)
+                FXButton("cancel", .ghost, compact: true, haptic: .selection) { wifi.disconnect() }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case let .fault(msg):
+            FaultPanel(title: "live view", message: msg, line: wifi.log.last.map { "> " + $0.lowercased() },
+                       action: ("try again", { start() }))
         }
-        .accessibilityLabel(wifi.frame == nil ? "no live view" : "live view")
-        .accessibilityHint(wifi.isLive ? "opens full screen" : "")
+    }
+
+    /// `■ live · 12 fps` on the left; grid, full and off on the right.
+    private var chips: some View {
+        VStack {
+            HStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Text("■")
+                    Text(String(format: "live · %.0f fps", wifi.fps)).monospacedDigit()
+                }
+                .chip(lit: false)
+                Spacer()
+                Button { grid.toggle(); Haptic.play(.selection) } label: { Text("#").chip(lit: grid) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("thirds grid")
+                    .accessibilityValue(grid ? "on" : "off")
+                Button {
+                    Haptic.play(.selection)
+                    nav.cut { nav.chromeHidden = !full }
+                } label: { Text(full ? "exit" : "full").chip(lit: false) }
+                    .buttonStyle(.plain)
+                Button { Haptic.play(.light); wifi.disconnect() } label: { Text("off").chip(lit: false) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("stop live view")
+            }
+            Spacer()
+        }
+        .padding(8)
+    }
+
+    private func start() {
+        Haptic.play(.light)
+        Task { await wifi.connect(joinNetwork: true) }
     }
 }
 
-/// Live view edge to edge, with the shutter and a way back. The chrome stays hidden until then.
+private extension View {
+    func chip(lit: Bool) -> some View {
+        font(Typeface.body(12))
+            .foregroundStyle(lit ? Token.ink : Token.foreground)
+            .padding(.horizontal, 9)
+            .frame(minWidth: 32, minHeight: 32)
+            .background(lit ? Token.foreground : Token.background.opacity(0.8))
+            .overlay(Rectangle().strokeBorder(Token.border, lineWidth: 1))
+            .contentShape(Rectangle())
+    }
+}
+
+/// Live view edge to edge, with the shutter row over it. Chrome comes back when it stops.
 private struct FullBleed: View {
     @Environment(WiFiRemoteController.self) private var wifi
     @Environment(AppNav.self) private var nav
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let f = wifi.frame {
-                Image(uiImage: f).resizable().scaledToFit()
-            } else {
-                Text(wifi.isLive ? "waiting for frames" : "live view stopped").systemLabel()
-            }
-            ThirdsGrid().stroke(Token.foreground.opacity(0.18), lineWidth: 1).allowsHitTesting(false)
-            VStack(spacing: 0) {
-                HStack {
-                    StatusMark(state: wifi.isLive ? .live : .idle, text: wifi.isLive ? String(format: "live · %.0f fps", wifi.fps) : "stopped")
-                    Spacer()
-                    FXButton("exit", .outline, compact: true, haptic: .selection) { nav.cut { nav.chromeHidden = false } }
-                }
-                .padding(.horizontal, Token.gutter)
-                .padding(.top, 8)
-                Spacer()
-                ShutterBar(floating: true)
-            }
+        VStack(spacing: 0) {
+            Viewfinder(full: true)
+            ShutterRow(floating: true)
         }
+        .background(Color.black.ignoresSafeArea())
         .statusBarHidden(true)
         .onChange(of: wifi.isLive) { _, live in if !live { nav.cut { nav.chromeHidden = false } } }
     }
@@ -186,106 +257,13 @@ struct ThirdsGrid: Shape {
     }
 }
 
-// MARK: Wi-Fi
-
-private struct WiFiPanel: View {
-    @Environment(WiFiRemoteController.self) private var wifi
-    @AppStorage("wifiIdleMinutes") private var idle = 5
-
-    var body: some View {
-        Panel(title: "live view", meta: meta) {
-            VStack(alignment: .leading, spacing: 12) {
-                switch wifi.phase {
-                case .idle:
-                    Text("on the camera, open wireless communication. resync joins its FUJIFILM-… wi-fi and starts live view. if it can't, join that network in settings › wi-fi first.")
-                        .font(Typeface.body(14)).fixedSize(horizontal: false, vertical: true)
-                    FXButton("start live view", grow: true) { start() }
-                case .joining, .connecting:
-                    log
-                    FXButton("cancel", .outline, compact: true, haptic: .selection) { wifi.disconnect() }
-                case .live:
-                    Text("wi-fi closes \(idle) min after you leave this tab.")
-                        .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
-                    FXButton("stop live view", .secondary, compact: true) { wifi.disconnect() }
-                case let .fault(msg):
-                    FaultPanel(title: "wi-fi", message: msg, line: wifi.log.last.map { "> " + $0 }, action: ("try again", { start() }))
-                }
-            }
-            .padding(14)
-        }
-    }
-
-    private var meta: String {
-        switch wifi.phase {
-        case .idle: return "asleep"
-        case .joining: return "joining"
-        case .connecting: return "handshake"
-        case .live: return "live"
-        case .fault: return "stopped"
-        }
-    }
-
-    /// The handshake as it happens, one typed line per step.
-    private var log: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(Array(wifi.log.suffix(4).enumerated()), id: \.offset) { _, line in
-                TypedText(text: "> " + line.lowercased())
-            }
-            HStack(spacing: 0) {
-                Text("> ")
-                BlinkingCursor()
-            }
-        }
-        .font(Typeface.diagram)
-        .foregroundStyle(Token.mutedForeground)
-        .lineLimit(1)
-    }
-
-    private func start() {
-        Task { await wifi.connect(joinNetwork: true) }
-    }
-}
-
-// MARK: Facts
-
-private struct ShootFacts: View {
-    @Environment(BLECameraController.self) private var ble
-    @Environment(ShutterState.self) private var shutter
-
-    var body: some View {
-        VStack(spacing: 0) {
-            LeaderRow(label: "geotag", value: geotag)
-            LeaderRow(label: "shutter", value: shutter.route.label)
-            LeaderRow(label: "shots this session", value: "\(shutter.shots)")
-        }
-        .overlay(alignment: .top) { Rectangle().fill(Token.border).frame(height: 1) }
-    }
-
-    private var geotag: String {
-        guard ble.isLinked else { return "paused" }
-        guard ble.autoSync else { return "off" }
-        guard let t = ble.lastSync else { return "waiting" }
-        return "synced " + t.formatted(date: .omitted, time: .shortened).lowercased()
-    }
-}
-
 // MARK: Shutter
 
 /// Shots and route survive leaving the tab and going full screen.
 @MainActor
 @Observable
 final class ShutterState {
-    enum Route: Equatable {
-        case bluetooth, wifi, none
-        var label: String {
-            switch self {
-            case .bluetooth: return "bluetooth · half-press, bulb"
-            case .wifi: return "wi-fi · tap only"
-            case .none: return "no camera"
-            }
-        }
-    }
-
+    enum Route: Equatable { case bluetooth, wifi, none }
     enum Press: Equatable { case idle, half, bulb(Date), countdown(Int), firing }
 
     var shots = 0
@@ -294,125 +272,167 @@ final class ShutterState {
     var route: Route = .none
 }
 
-/// The signal-red shutter. Touch down half-presses (focus), release fires. Hold past 1.1 s for
-/// bulb: the shutter stays open until you let go. Slide off to cancel. The self-timer counts
-/// down after release.
-private struct ShutterBar: View {
+/// `[c3 · in camera / kodachrome 64]   [ fire ]   [timer / off]`, and the hint under it.
+private struct ShutterRow: View {
     var floating = false
+    @Environment(RecipeStore.self) private var store
+    @Environment(SendQueue.self) private var queue
+    @Environment(ShutterState.self) private var state
+    @State private var sending: Recipe?
+    @State private var lastBulb: Double?
+    @State private var cancelled = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                recipeChip.frame(maxWidth: .infinity, alignment: .leading)
+                ShutterButton(cancelled: $cancelled, lastBulb: $lastBulb)
+                timerChip.frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            Text(hint)
+                .systemLabel()
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .transaction { $0.animation = nil }
+        }
+        .padding(.horizontal, Token.gutter)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+        .background(floating ? Color.black.opacity(0.7) : Token.background)
+        .fxSheet(item: $sending, title: { _ in "send to camera" }, meta: { $0.name.lowercased() }) { r in
+            SendSheet(recipe: r)
+        }
+    }
+
+    /// The recipe you're shooting with: the newest one in the camera, else the newest one.
+    private var featured: Recipe? {
+        store.sorted.first { !store.slots(for: $0).isEmpty } ?? store.sorted.first
+    }
+
+    @ViewBuilder private var recipeChip: some View {
+        if let r = featured {
+            let slots = store.slots(for: r)
+            let queued = queue.queuedSlot(for: r)
+            let place = slots.first.map { "c\($0) · in camera" } ?? queued.map { "c\($0) · queued" } ?? "library only"
+            Button { sending = r; Haptic.play(.selection) } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(place).systemLabel()
+                    Text(r.name.lowercased()).font(Typeface.body(13)).foregroundStyle(Token.foreground)
+                }
+                .lineLimit(1)
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .frame(maxWidth: 132, minHeight: 52, alignment: .leading)
+                .overlay(Rectangle().strokeBorder(Token.input, lineWidth: 1))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(r.name), \(place). opens the slot grid")
+        } else {
+            Color.clear.frame(width: 1, height: 1)
+        }
+    }
+
+    private var timerChip: some View {
+        Button {
+            state.timer = state.timer == 0 ? 2 : (state.timer == 2 ? 10 : 0)
+            Haptic.play(.selection)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("timer").systemLabel()
+                Text(state.timer == 0 ? "off" : "\(state.timer)s").font(Typeface.body(13)).foregroundStyle(Token.foreground)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(minWidth: 60, minHeight: 52, alignment: .leading)
+            .overlay(Rectangle().strokeBorder(Token.input, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .transaction { $0.animation = nil }
+        .accessibilityLabel("timer")
+        .accessibilityValue(state.timer == 0 ? "off" : "\(state.timer) seconds")
+    }
+
+    private var hint: String {
+        if cancelled { return "cancelled" }
+        switch state.press {
+        case .half: return "focusing · release to fire · keep holding for bulb"
+        case .bulb: return "bulb open · release to close"
+        case .countdown: return "timer running"
+        case .firing: return "exposing"
+        case .idle: break
+        }
+        if let b = lastBulb { return String(format: "last bulb %.1f s", b) }
+        switch state.route {
+        case .bluetooth:
+            return state.timer > 0 ? "tap to start the \(state.timer) s timer" : "hold to focus · release to fire · keep holding for bulb"
+        case .wifi: return "tap to fire over wi-fi"
+        case .none: return "pair the camera to shoot"
+        }
+    }
+}
+
+/// The 88 pt signal square. Touch down half-presses (focus), release fires. Hold past 1.1 s
+/// for bulb: the shutter stays open until you let go. Slide off to cancel. The self-timer
+/// counts down after release.
+private struct ShutterButton: View {
+    @Binding var cancelled: Bool
+    @Binding var lastBulb: Double?
     @Environment(BLECameraController.self) private var ble
     @Environment(WiFiRemoteController.self) private var wifi
     @Environment(ShutterState.self) private var state
     @State private var holdTask: Task<Void, Never>?
     @State private var countTask: Task<Void, Never>?
-    @State private var cancelled = false
-    @State private var lastBulb: Double?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let bulbAfter = 1.1
     private static let cancelDistance: CGFloat = 24
+    private static let side: CGFloat = 88
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Text("timer").systemLabel()
-                HStack(spacing: 0) {
-                    ForEach([0, 2, 10], id: \.self) { t in
-                        Button {
-                            state.timer = t
-                            Haptic.play(.selection)
-                        } label: {
-                            Text(t == 0 ? "off" : "\(t)s")
-                                .font(Typeface.body(12))
-                                .frame(minWidth: 44, minHeight: 32)
-                                .foregroundStyle(state.timer == t ? Token.ink : Token.foreground)
-                                .background(state.timer == t ? Token.foreground : .clear)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(t == 0 ? "timer off" : "\(t) second timer")
-                        .accessibilityAddTraits(state.timer == t ? .isSelected : [])
-                    }
-                }
-                .overlay(Rectangle().strokeBorder(Token.input, lineWidth: 1))
-                Spacer()
-                Text(hint).font(Typeface.body(12)).foregroundStyle(Token.mutedForeground).lineLimit(1)
-            }
-            shutterButton
-        }
-        .padding(.horizontal, Token.gutter)
-        .padding(.vertical, 10)
-        .background(floating ? Color.black.opacity(0.6) : Token.background)
-        .overlay(alignment: .top) { if !floating { Rectangle().fill(Token.border).frame(height: Token.rule) } }
-        .transaction { $0.animation = nil }
-        .onAppear(perform: updateRoute)
-        .onChange(of: ble.canShutter) { _, _ in updateRoute() }
-        .onChange(of: wifi.isLive) { _, _ in updateRoute() }
-    }
-
-    private var shutterButton: some View {
-        let lit = state.press != .idle
-        return ZStack {
+        ZStack {
             Rectangle().fill(state.route == .none ? Token.muted : Token.signal)
-            if case .half = state.press {
-                Rectangle().strokeBorder(Token.ink, lineWidth: 3).padding(5)
+            if state.press == .half {
+                Rectangle().strokeBorder(Token.ink, lineWidth: 3).padding(6)
+            }
+            if state.press == .firing {
+                Rectangle().fill(Token.foreground)
             }
             label
-                .font(Typeface.medium(17))
+                .font(Typeface.medium(14))
                 .foregroundStyle(state.route == .none ? Token.mutedForeground : Token.ink)
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, minHeight: 64)
-        .overlay(Rectangle().strokeBorder(lit ? Token.foreground : .clear, lineWidth: 1))
+        .frame(width: Self.side, height: Self.side)
         .contentShape(Rectangle())
+        .transaction { $0.animation = nil }
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { v in
                     if state.press == .idle, !cancelled { down() }
-                    let d = hypot(v.translation.width, v.translation.height)
-                    if d > Self.cancelDistance, !cancelled { cancel() }
+                    if hypot(v.translation.width, v.translation.height) > Self.cancelDistance, !cancelled { cancel() }
                 }
                 .onEnded { _ in up() }
         )
         .accessibilityElement()
         .accessibilityLabel("shutter")
-        .accessibilityValue(accessibilityValue)
+        .accessibilityHint("hold to focus, release to fire, keep holding for bulb")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { tapFire() }
+        .onAppear(perform: updateRoute)
+        .onChange(of: ble.isLinked) { _, _ in updateRoute() }
+        .onChange(of: wifi.isLive) { _, _ in updateRoute() }
     }
 
     @ViewBuilder private var label: some View {
         switch state.press {
-        case .idle:
-            Text(state.route == .none ? "no camera" : (state.timer > 0 ? "shutter · \(state.timer)s" : "shutter"))
-        case .half:
-            Text("focusing · let go to fire")
+        case .idle: Text(state.route == .none ? "no\ncamera" : "fire")
+        case .half: Text("focus")
         case let .bulb(start):
             TimelineView(.periodic(from: start, by: 0.1)) { ctx in
-                Text(String(format: "bulb · %.1f s", ctx.date.timeIntervalSince(start)))
-                    .monospacedDigit()
+                Text(String(format: "bulb\n%.1f s", ctx.date.timeIntervalSince(start))).monospacedDigit()
             }
-        case let .countdown(n):
-            Text("\(n)").font(Typeface.display(28))
-        case .firing:
-            Text("exposing")
-        }
-    }
-
-    private var hint: String {
-        if cancelled { return "cancelled" }
-        if let b = lastBulb { return String(format: "last bulb %.1f s", b) }
-        switch state.route {
-        case .bluetooth: return state.timer > 0 ? "tap to start" : "hold for bulb"
-        case .wifi: return "tap to fire"
-        case .none: return "pair to shoot"
-        }
-    }
-
-    private var accessibilityValue: String {
-        switch state.press {
-        case .idle: return state.route.label
-        case .half: return "focusing"
-        case .bulb: return "bulb open"
-        case let .countdown(n): return "\(n)"
-        case .firing: return "exposing"
+        case let .countdown(n): Text("\(n)").font(Typeface.display(34))
+        case .firing: Text("")
         }
     }
 
@@ -420,7 +440,6 @@ private struct ShutterBar: View {
         state.route = ble.canShutter ? .bluetooth : (wifi.isLive ? .wifi : .none)
     }
 
-    // Touch down: half-press so the camera focuses while the finger rests.
     private func down() {
         updateRoute()
         guard state.route != .none, countTask == nil else { return }
@@ -443,21 +462,26 @@ private struct ShutterBar: View {
         holdTask?.cancel(); holdTask = nil
         cancelled = true
         if state.route == .bluetooth, state.press != .idle { ble.shutter(.release) }
-        if case let .bulb(start) = state.press { finishBulb(start) }
+        if case let .bulb(start) = state.press { lastBulb = Date().timeIntervalSince(start) }
         state.press = .idle
         Haptic.play(.warning)
     }
 
     private func up() {
         holdTask?.cancel(); holdTask = nil
-        defer { cancelled = false }
-        guard !cancelled else { return }
+        guard !cancelled else {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                cancelled = false
+            }
+            return
+        }
         switch state.press {
         case .half:
             if state.timer > 0 { startCountdown() } else { fire() }
         case let .bulb(start):
             ble.shutter(.release)
-            finishBulb(start)
+            lastBulb = Date().timeIntervalSince(start)
             state.shots += 1
             state.press = .idle
             Haptic.play(.success)
@@ -467,6 +491,7 @@ private struct ShutterBar: View {
     }
 
     private func tapFire() {
+        updateRoute()
         guard state.route != .none, state.press == .idle else { return }
         if state.timer > 0 { startCountdown() } else { fire() }
     }
@@ -484,6 +509,7 @@ private struct ShutterBar: View {
         }
     }
 
+    /// Fill flashes bone for one frame, then the shot counts.
     private func fire() {
         state.press = .firing
         Haptic.play(.heavy)
@@ -499,12 +525,8 @@ private struct ShutterBar: View {
                 break
             }
             state.shots += 1
-            try? await Task.sleep(nanoseconds: reduceMotion ? 0 : 160_000_000)
+            if !reduceMotion { try? await Task.sleep(nanoseconds: 80_000_000) }
             state.press = .idle
         }
-    }
-
-    private func finishBulb(_ start: Date) {
-        lastBulb = Date().timeIntervalSince(start)
     }
 }

@@ -96,6 +96,11 @@ struct RecipeEditorView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(14)
                     }
+                    Text("edits save as you go · swipe from the left edge to go back")
+                        .systemLabel()
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
                 }
                 .padding(.horizontal, Token.gutter)
                 .padding(.vertical, 16)
@@ -110,7 +115,7 @@ struct RecipeEditorView: View {
                 }
                 .disabled(!draft.filmSimulation.onXT30II)
                 FXButton("share", .outline, compact: true) { ShareSheet.present([RecipeText.format(draft)]) }
-                FXButton("···", .outline, compact: true, haptic: .selection) { more = true }
+                FXButton("…", .outline, compact: true, haptic: .selection) { more = true }
                     .accessibilityLabel("more")
                     .fxMenu(isPresented: $more, items: [
                         FXMenuItem(title: "duplicate", meta: "copy") { duplicate() },

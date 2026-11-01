@@ -10,6 +10,7 @@ struct CameraView: View {
     @Environment(SendQueue.self) private var queue
     @Environment(Overlays.self) private var overlays
     @Environment(AppNav.self) private var nav
+    @Environment(WiFiRemoteController.self) private var wifi
     @State private var picked: CameraPreset?
     @State private var pullID: UUID?
 
@@ -18,15 +19,19 @@ struct CameraView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     if ble.savedCameraID == nil { PairPanel() } else { linkPanel }
-                    usbPanel
+                    if case .needsPermission = usb.phase {
+                        FaultPanel(title: "usb-c", message: "resync isn't allowed to control the camera. allow it in settings › resync, then come back.",
+                                   action: ("open settings", {
+                                       if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                                   }))
+                    }
                     if case let .fault(message) = usb.phase {
-                        FaultPanel(title: "usb", message: message + " check the cable and the camera's connection mode, then try again.",
+                        FaultPanel(title: "usb-c", message: message + " check the cable and the camera's connection mode, then try again.",
                                    action: ("try again", { usb.stop(); usb.start() }))
                     }
-                    if !queue.items.isEmpty { queuePanel }
+                    queuePanel
                     slotsPanel
                     if !usb.isReady, store.camera == nil { setupSteps }
-                    if !usb.log.isEmpty { logPanel }
                 }
                 .padding(.horizontal, Token.gutter)
                 .padding(.vertical, 16)
@@ -72,67 +77,83 @@ struct CameraView: View {
 
     // MARK: Panels
 
+    /// One camera, one link: bluetooth always, wi-fi on demand, usb-c when plugged.
     private var linkPanel: some View {
-        Panel(title: "bluetooth", meta: ble.isLinked ? "linked" : "paired") {
-            VStack(alignment: .leading, spacing: 0) {
-                switch ble.phase {
-                case let .linked(n):
-                    LeaderRow(label: "camera", value: n.lowercased(), valueColor: Token.foreground)
-                    LeaderRow(label: "geotags sent", value: "\(ble.syncCount)")
-                    Toggle("geotag every photo", isOn: Binding(get: { ble.autoSync }, set: { ble.autoSync = $0 }))
-                        .toggleStyle(.fx)
-                case .connecting, .scanning:
-                    HStack(spacing: 8) { BlinkMark(); Text("linking") }.padding(14)
-                case let .fault(msg):
-                    Text(msg).font(Typeface.body(13)).foregroundStyle(Token.signal).padding(14)
-                    FXButton("reconnect", .outline, compact: true) { ble.reconnect() }.padding([.horizontal, .bottom], 14)
-                case .off, .unauthorized:
-                    StatusMark(state: .fault, text: ble.phase == .off ? "bluetooth is off" : "bluetooth not allowed").padding(14)
-                case .idle:
-                    StatusMark(state: .idle, text: "camera not in range").padding(14)
-                    FXButton("reconnect", .outline, compact: true) { ble.reconnect() }.padding([.horizontal, .bottom], 14)
+        Panel(title: "link", meta: "one camera · bluetooth") {
+            VStack(spacing: 0) {
+                LeaderRow(mark: "■", label: cameraName, value: linkState,
+                          valueColor: ble.isLinked ? Token.foreground : Token.mutedForeground)
+                LeaderRow(label: "geotag", value: geotag)
+                LeaderRow(label: "shutter", value: ble.canShutter ? "ready" : (wifi.isLive ? "wi-fi" : "paused"))
+                LeaderRow(label: "live view", value: wifi.isLive ? String(format: "wi-fi · %.0f fps", wifi.fps) : "asleep")
+                LeaderRow(label: "usb-c", value: usbState, valueColor: usb.isReady ? Token.foreground : Token.mutedForeground)
+                if !ble.isLinked {
+                    HStack {
+                        if case .connecting = ble.phase { BlinkMark(); Text("linking").font(Typeface.body(13)) }
+                        Spacer()
+                        FXButton("reconnect", .outline, compact: true) { ble.reconnect() }
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
                 }
             }
         }
     }
 
-    private var usbPanel: some View {
-        Panel(title: "usb-c", meta: usb.busy) {
-            VStack(alignment: .leading, spacing: 8) {
-                switch usb.phase {
-                case .idle: StatusMark(state: .idle, text: "not started")
-                case .needsPermission:
-                    StatusMark(state: .fault, text: "no permission to control the camera")
-                    Text("allow camera control for resync in settings, then come back.")
-                        .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
-                    FXButton("open settings", .outline, compact: true) {
-                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-                    }
-                case .searching:
-                    HStack(spacing: 8) { ScanGlyph(); Text("waiting for a camera on usb-c").foregroundStyle(Token.mutedForeground) }
-                case let .opening(n): StatusMark(state: .busy, text: "opening \(n.lowercased())")
-                case let .ready(n): StatusMark(state: .live, text: "\(n.lowercased()) · ptp ready")
-                case .fault: StatusMark(state: .fault, text: "stopped")
-                }
-            }
-            .font(Typeface.body(13))
-            .padding(14)
+    private var cameraName: String {
+        if case let .linked(n) = ble.phase { return n.lowercased() }
+        if case let .connecting(n) = ble.phase { return n.lowercased() }
+        return "x-t30 ii"
+    }
+
+    private var linkState: String {
+        switch ble.phase {
+        case .linked: return "linked"
+        case .connecting, .scanning: return "linking"
+        case .fault: return "dropped"
+        case .off: return "bluetooth off"
+        case .unauthorized: return "not allowed"
+        case .idle: return "not in range"
+        }
+    }
+
+    private var geotag: String {
+        guard ble.isLinked else { return "paused" }
+        guard ble.autoSync else { return "off" }
+        guard let t = ble.lastSync else { return "waiting" }
+        let acc = ble.lastSentLocation.map { " · ±\(Int($0.horizontalAccuracy)) m" } ?? ""
+        return "synced " + t.formatted(date: .omitted, time: .shortened).lowercased() + acc
+    }
+
+    private var usbState: String {
+        switch usb.phase {
+        case .idle, .searching: return "no cable"
+        case .needsPermission: return "not allowed"
+        case .opening: return "opening"
+        case .ready: return usb.busy ?? "ptp ready"
+        case .fault: return "stopped"
         }
     }
 
     private var queuePanel: some View {
-        Panel(title: "/queue", meta: queue.open.isEmpty ? "clear" : "\(queue.open.count) open") {
-            VStack(spacing: 0) {
-                ForEach(Array(queue.items.enumerated()), id: \.element.id) { i, item in
-                    QueueRow(item: item)
-                        .stepIn(i)
-                }
-                if queue.items.contains(where: { !$0.isOpen }) {
-                    HStack {
-                        Spacer()
-                        FXButton("clear finished", .ghost, compact: true, haptic: .selection) { queue.clearFinished() }
+        Panel(title: "/queue", meta: "writes over usb-c") {
+            if queue.items.isEmpty {
+                Text("empty. send a recipe from its swipe, the editor, or the shoot tab.")
+                    .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(14)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(queue.items.enumerated()), id: \.element.id) { i, item in
+                        QueueRow(item: item)
+                            .stepIn(i)
                     }
-                    .padding(.horizontal, 8)
+                    if queue.items.contains(where: { !$0.isOpen }) {
+                        HStack {
+                            Spacer()
+                            FXButton("clear finished", .ghost, compact: true, haptic: .selection) { queue.clearFinished() }
+                        }
+                        .padding(.horizontal, 8)
+                    }
                 }
             }
         }
@@ -145,8 +166,8 @@ struct CameraView: View {
         } else {
             rows = (store.camera?.slots ?? []).map { SlotLine(slot: $0.slot, name: $0.name, recipe: $0.recipe, preset: nil) }
         }
-        let meta: String = usb.isReady ? "live" : store.camera.map { "read " + $0.readAt.formatted(date: .abbreviated, time: .shortened).lowercased() } ?? "never read"
-        return Panel(title: "/camera/custom", meta: meta) {
+        let meta: String = usb.isReady ? "live" : store.camera.map { "read " + $0.readAt.formatted(date: .omitted, time: .shortened).lowercased() } ?? "never read"
+        return Panel(title: "slots · c1–c7", meta: meta) {
             if rows.isEmpty {
                 Text(usb.isReady ? "reading c1–c7" : "plug the camera in once to read c1–c7.")
                     .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
@@ -155,11 +176,9 @@ struct CameraView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.slot) { i, row in
                         let match = store.libraryMatch(for: row.recipe)
-                        let queued = queue.open.first { $0.slot == row.slot }
-                        SelectRow(title: "c\(row.slot)  " + (row.name.isEmpty ? "unnamed" : row.name).lowercased(),
-                                  subtitle: queued.map { "queued: " + $0.title } ?? row.recipe.filmSimulation.label.lowercased(),
-                                  meta: match == nil ? "not in library" : "in library",
-                                  muted: match == nil) {
+                        let queued = queue.open.first { $0.slot == row.slot && $0.state == .waiting }
+                        Button {
+                            Haptic.play(.selection)
                             if let match {
                                 nav.open(match.id)
                             } else if let p = row.preset {
@@ -167,7 +186,13 @@ struct CameraView: View {
                             } else {
                                 overlays.toast("plug the camera in to save c\(row.slot)")
                             }
+                        } label: {
+                            EmptyView()
                         }
+                        .buttonStyle(SlotRowStyle(slot: row.slot,
+                                                  name: (row.name.isEmpty ? "unnamed" : row.name).lowercased(),
+                                                  value: queued != nil ? "queued" : (match == nil ? "not in library" : row.recipe.filmSimulation.label.lowercased()),
+                                                  inLibrary: match != nil))
                         .stepIn(i)
                     }
                 }
@@ -186,24 +211,42 @@ struct CameraView: View {
         }
     }
 
-    private var logPanel: some View {
-        Panel(title: "usb log", meta: "last \(min(usb.log.count, 8))") {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(usb.log.suffix(8).enumerated()), id: \.offset) { _, line in
-                    Text(line.lowercased()).font(Typeface.diagram).foregroundStyle(Token.mutedForeground)
-                        .lineLimit(2)
-                }
-            }
-            .padding(14)
-        }
-    }
-
     private func step(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text("\(n)").foregroundStyle(Token.mutedForeground)
             Text(text).foregroundStyle(Token.foreground).fixedSize(horizontal: false, vertical: true)
         }
         .font(Typeface.body(13))
+    }
+}
+
+/// `[C1] provia standard ………… provia`: bone badge when the library has it, outline when not.
+private struct SlotRowStyle: ButtonStyle {
+    var slot: Int
+    var name: String
+    var value: String
+    var inLibrary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let lit = configuration.isPressed
+        return HStack(alignment: .center, spacing: 10) {
+            Text("C\(slot)")
+                .font(Typeface.medium(10)).tracking(0.6)
+                .frame(minWidth: 26, minHeight: 20)
+                .foregroundStyle(inLibrary ? Token.ink : Token.foreground)
+                .background(inLibrary ? Token.foreground : .clear)
+                .overlay(Rectangle().strokeBorder(Token.foreground, lineWidth: inLibrary ? 0 : 1))
+            Text(name).font(Typeface.body(15)).lineLimit(1)
+            Leader()
+            Text(value).font(Typeface.body(13)).foregroundStyle(lit ? Token.ink.opacity(0.7) : Token.mutedForeground).lineLimit(1)
+        }
+        .foregroundStyle(lit ? Token.ink : Token.foreground)
+        .padding(.horizontal, 14)
+        .frame(minHeight: 46)
+        .background(lit ? Token.foreground : .clear)
+        .contentShape(Rectangle())
+        .transaction { $0.animation = nil }
+        .accessibilityElement(children: .combine)
     }
 }
 

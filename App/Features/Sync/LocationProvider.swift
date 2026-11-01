@@ -8,7 +8,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private(set) var latest: CLLocation?
     private var oneShots: [(CLLocation) -> Void] = []
-    var onUpdate: ((CLLocation) -> Void)?
+    /// Every fix as it arrives, oldest first: a shooting session records its route from these.
+    var onFixes: (@MainActor ([CLLocation]) -> Void)?
 
     var authorization: CLAuthorizationStatus { manager.authorizationStatus }
 
@@ -52,6 +53,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             manager.desiredAccuracy = held ? kCLLocationAccuracyNearestTenMeters : kCLLocationAccuracyHundredMeters
             manager.distanceFilter = held ? 10 : 50
             manager.pausesLocationUpdatesAutomatically = !held
+            // A session is someone walking about with the camera; fitness keeps the fixes on paths.
+            manager.activityType = held ? .fitness : .other
             manager.startUpdatingLocation()
             manager.startMonitoringSignificantLocationChanges()
         } else {
@@ -69,7 +72,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         guard let loc = locations.last else { return }
         MainActor.assumeIsolated {
             latest = loc
-            onUpdate?(loc)
+            onFixes?(locations)
             let pending = oneShots; oneShots = []
             pending.forEach { $0(loc) }
         }

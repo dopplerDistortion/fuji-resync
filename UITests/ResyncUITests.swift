@@ -122,7 +122,8 @@ final class ResyncUITests: XCTestCase {
         let highlight = el("stepper.highlight")
         XCTAssertTrue(highlight.waitForExistence(timeout: 2))
         let before = highlight.value as? String
-        highlight.increment()
+        // The + button is the last 44 pt cell, 14 pt in from the row's right edge.
+        highlight.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -36, dy: 0)).tap()
         XCTAssertNotEqual(highlight.value as? String, before)
 
         button(beginningWith: "simulation").tap()

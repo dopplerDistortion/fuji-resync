@@ -12,7 +12,7 @@ There's no official SDK, so the app relies on reverse-engineered protocols. Noth
 
 ## build
 
-Requirements: Xcode 16+, iOS 17+, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requirements: Xcode 26+ (the Mapbox SDK is built with Swift 6.2), iOS 17+, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 brew install xcodegen

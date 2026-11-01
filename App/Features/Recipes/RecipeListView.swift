@@ -19,6 +19,7 @@ struct RecipeRow: View {
 
 struct RecipeListView: View {
     @Environment(RecipeStore.self) private var store
+    @Environment(USBCameraController.self) private var usb
     @State private var query = ""
     @State private var importing = false
     @State private var notice: String?
@@ -39,6 +40,11 @@ struct RecipeListView: View {
                 NavigationLink(value: Route.newRecipe) { Text("new") }.buttonStyle(.fx(.default, compact: true))
                 Button("import") { importing = true }.buttonStyle(.fx(.secondary, compact: true))
                 Button("paste") { pasteFromClipboard() }.buttonStyle(.fx(.secondary, compact: true))
+                if usb.isReady {
+                    Button("pull") { Task { notice = PullNote.text(await usb.pull(into: store)) } }
+                        .buttonStyle(.fx(.secondary, compact: true))
+                        .disabled(usb.busy != nil)
+                }
                 Spacer()
                 Menu {
                     ShareLink(item: RecipeBundleFile(data: store.exportBundle(), name: "recipes.json"),

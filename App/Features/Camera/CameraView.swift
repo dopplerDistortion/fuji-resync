@@ -6,6 +6,7 @@ struct CameraView: View {
     @Environment(USBCameraController.self) private var usb
     @Environment(RecipeStore.self) private var store
     @State private var picked: CameraPreset?
+    @State private var pullNote: String?
 
     var body: some View {
         Screen(path: ["camera"], title: "camera", subtitle: "custom settings c1–c7 over usb-c.") {
@@ -23,6 +24,12 @@ struct CameraView: View {
                         Button("reload") { Task { await usb.refreshSlots() } }
                             .buttonStyle(.fx(.ghost)).disabled(usb.busy != nil)
                     }
+                    Button(usb.busy ?? "pull c1–c7 to library") {
+                        Task { pullNote = PullNote.text(await usb.pull(into: store)) }
+                    }
+                    .buttonStyle(.fx(.default, compact: true))
+                    .disabled(usb.busy != nil)
+                    if let pullNote { Text(pullNote).font(Typeface.body(13)).foregroundStyle(Token.mutedForeground) }
                     ForEach(usb.slots, id: \.slot) { p in
                         let inLibrary = store.libraryMatch(for: PresetCodec.decode(p)) != nil
                         Button { picked = p } label: {
@@ -117,6 +124,14 @@ struct SlotDetailSheet: View {
                 if let savedNote { Text(savedNote).font(Typeface.body(13)).foregroundStyle(Token.mutedForeground) }
             }
         }
+    }
+}
+
+enum PullNote {
+    static func text(_ r: (added: Int, already: Int)?) -> String {
+        guard let r else { return "> couldn't read the camera. check the cable and try again." }
+        if r.added == 0 { return "> all \(r.already) slots are already in the library." }
+        return "> saved \(r.added) new recipe\(r.added == 1 ? "" : "s"). \(r.already) already in the library."
     }
 }
 

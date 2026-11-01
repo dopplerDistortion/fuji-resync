@@ -99,6 +99,14 @@ final class USBCameraController: NSObject {
         }
     }
 
+    /// Reads C1–C7 fresh and hands them to `save`. One action from camera to library.
+    func pull(into store: RecipeStore) async -> (added: Int, already: Int)? {
+        guard service != nil else { return nil }
+        await refreshSlots()
+        guard isReady, !slots.isEmpty else { return nil }
+        return store.saveAllFromCamera(slots)
+    }
+
     func write(_ recipe: Recipe, to slot: Int) async -> PresetService.WriteReport? {
         guard let service else { return nil }
         busy = "writing c\(slot)"

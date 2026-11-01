@@ -139,6 +139,17 @@ final class RecipeStore {
         return (copy, true)
     }
 
+    /// Saves every slot whose settings aren't in the library yet. Empty or unnamed slots are
+    /// saved under "C<n>". Returns how many were added and how many were already there.
+    func saveAllFromCamera(_ presets: [CameraPreset]) -> (added: Int, already: Int) {
+        var added = 0, already = 0
+        for p in presets.sorted(by: { $0.slot < $1.slot }) {
+            if saveFromCamera(PresetCodec.decode(p)).added { added += 1 } else { already += 1 }
+        }
+        AppLog.write(.recipes, "pulled from camera: +\(added) =\(already)")
+        return (added, already)
+    }
+
     /// Copies notes the library recipe is missing. Returns true if anything changed.
     private func fillNotes(_ target: inout Recipe, from r: Recipe) -> Bool {
         var changed = false

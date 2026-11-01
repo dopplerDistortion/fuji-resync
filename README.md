@@ -16,11 +16,12 @@ Requirements: Xcode 16+, iOS 17+, and [XcodeGen](https://github.com/yonaskolb/Xc
 
 ```sh
 brew install xcodegen
+cp Config/Local.xcconfig.example Config/Local.xcconfig   # put your team ID in it (gitignored)
 xcodegen generate
 open Resync.xcodeproj
 ```
 
-Set your team under *Signing & Capabilities* and run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
+Run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 
 - **Free Apple ID (personal team):** works as is. For remote, join the camera's `FUJIFILM-…` network in Settings → Wi-Fi before tapping *connect*.
 - **Paid developer account:** you can add the `HotspotConfiguration` key back to `App/Support/Resync.entitlements` (the exact line is in a comment there). The app can then join the camera's network itself once you turn on *join wi-fi for me* in remote.

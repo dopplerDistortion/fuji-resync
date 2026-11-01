@@ -4,7 +4,6 @@ import SwiftUI
 struct RemoteView: View {
     @Environment(WiFiRemoteController.self) private var wifi
     @Environment(BLECameraController.self) private var ble
-    @AppStorage("remote.autoJoin") private var autoJoin = false
 
     var body: some View {
         Screen(path: ["remote"], title: "remote", subtitle: "live view and shutter over the camera's wi-fi.") {
@@ -30,22 +29,18 @@ struct RemoteView: View {
                 case let .live(n): StatusMark(state: .live, text: "\(n.lowercased()) · live")
                 case .fault: StatusMark(state: .fault, text: "stopped")
                 }
-                Toggle(isOn: $autoJoin) {
-                    Text("join FUJIFILM-… wi-fi for me · paid dev account").font(Typeface.body(14)).foregroundStyle(Token.foreground)
-                }
-                .tint(Token.foreground)
                 HStack(spacing: 8) {
                     if wifi.isLive || wifi.phase == .joining {
                         Button("disconnect") { wifi.disconnect() }.buttonStyle(.fx(.secondary, compact: true))
                     } else {
-                        Button("connect") { Task { await wifi.connect(joinNetwork: autoJoin) } }
+                        Button("connect") { Task { await wifi.connect() } }
                             .buttonStyle(.fx(.default, compact: true))
                     }
                 }
             }
 
             if case let .fault(msg) = wifi.phase {
-                FaultPanel(title: "wi-fi", message: msg, action: ("retry", { Task { await wifi.connect(joinNetwork: autoJoin) } }))
+                FaultPanel(title: "wi-fi", message: msg, action: ("retry", { Task { await wifi.connect() } }))
             }
 
             if !wifi.isLive {

@@ -44,6 +44,11 @@ final class BLECameraController: NSObject {
     @ObservationIgnored private var peripheral: CBPeripheral?
     @ObservationIgnored private var characteristics: [String: CBCharacteristic] = [:]
     @ObservationIgnored private var pendingPairing: FujiBLE.PairingKind?
+    /// Handshake sent on this connection; we wait for the camera to talk back before calling it linked.
+    @ObservationIgnored private var handshakeSent = false
+    /// Drops in a row before the camera accepted us. Drives the reconnect backoff.
+    @ObservationIgnored private var failedLinks = 0
+    @ObservationIgnored private var reconnectTask: Task<Void, Never>?
 
     private enum Keys {
         static let saved = "ble.savedPeripheral"
@@ -97,6 +102,8 @@ final class BLECameraController: NSObject {
     }
 
     func forget() {
+        reconnectTask?.cancel(); reconnectTask = nil
+        failedLinks = 0
         if let peripheral { central.cancelPeripheralConnection(peripheral) }
         peripheral = nil
         [Keys.saved, Keys.token, Keys.serial].forEach { UserDefaults.standard.removeObject(forKey: $0) }
@@ -129,6 +136,14 @@ final class BLECameraController: NSObject {
     // MARK: Internals
 
     private func connect(_ p: CBPeripheral, name: String) {
+        // One connection attempt at a time: a second connect while iOS is still connecting
+        // made the camera drop the link during first pairing.
+        if peripheral === p, p.state == .connecting || p.state == .connected {
+            AppLog.write(.ble, "connect skipped, already \(p.state == .connected ? "connected" : "connecting")")
+            return
+        }
+        reconnectTask?.cancel(); reconnectTask = nil
+        handshakeSent = false
         peripheral = p
         p.delegate = self
         characteristics = [:]
@@ -158,7 +173,8 @@ final class BLECameraController: NSObject {
         // Wait until the services we need are in.
         let have = Set(characteristics.keys)
         let needed: Set<String> = [FujiBLE.Characteristic.geotagWrite, FujiBLE.Characteristic.geotagRequest]
-        guard needed.isSubset(of: have), !isLinked else { return }
+        guard needed.isSubset(of: have), !handshakeSent else { return }
+        handshakeSent = true
         handshake(p)
     }
 
@@ -192,9 +208,23 @@ final class BLECameraController: NSObject {
         case let .secure(serial)?: UserDefaults.standard.set(serial, forKey: Keys.serial)
         case nil: break
         }
+        note("handshake sent, waiting for the camera")
+        // Normally the camera answers with a notification within a second. If it stays quiet
+        // but keeps the link up, treat that as accepted too.
+        Task { [weak self, weak p] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard let self, let p, p === self.peripheral, p.state == .connected else { return }
+            self.confirmLink(p, reason: "link held 4 s")
+        }
+    }
+
+    /// Marks the link as live once the camera has shown it accepted the handshake.
+    private func confirmLink(_ p: CBPeripheral, reason: String) {
+        guard handshakeSent, !isLinked else { return }
         pendingPairing = nil
+        failedLinks = 0
         phase = .linked(p.name ?? "camera")
-        note("linked to \(p.name ?? "camera")")
+        note("linked to \(p.name ?? "camera") (\(reason))")
         location.setActive(autoSync)
     }
 
@@ -207,6 +237,7 @@ final class BLECameraController: NSObject {
     private func didUpdate(_ c: CBCharacteristic, value: Data, on p: CBPeripheral) {
         let id = c.uuid.uuidString.uppercased()
         AppLog.write(.ble, "← \(id.prefix(8)) \(value.hex)")
+        confirmLink(p, reason: "camera answered")
         if id == FujiBLE.Characteristic.geotagRequest, value.starts(with: FujiBLE.geotagRequested) {
             guard autoSync else { return }
             if let loc = location.latest, loc.timestamp.timeIntervalSinceNow > -120 { send(loc) }
@@ -267,18 +298,36 @@ extension BLECameraController: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         MainActor.assumeIsolated {
+            note("connect failed: \(error?.localizedDescription ?? "unknown")")
             phase = .fault("couldn't connect: \(error?.localizedDescription ?? "unknown"). put the camera in pairing mode and scan again.")
         }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         MainActor.assumeIsolated {
-            note("disconnected")
+            let wasLinked = isLinked
+            note("disconnected\(wasLinked ? "" : " before the camera accepted")" + (error.map { ": \($0.localizedDescription)" } ?? ""))
             characteristics = [:]
+            handshakeSent = false
             location.setActive(false)
+            if !wasLinked { failedLinks += 1 }
+            let pairingFailed = pendingPairing != nil && failedLinks >= 3
+            if pairingFailed {
+                pendingPairing = nil
+                phase = .fault("the camera keeps dropping the link. on the camera, delete this phone from bluetooth settings, start pairing registration again, then scan.")
+                return
+            }
             phase = .idle
-            // Ask iOS to reconnect whenever the camera comes back in range.
-            if savedCameraID == peripheral.identifier { connect(peripheral, name: peripheral.name ?? "camera") }
+            // Ask iOS to reconnect when the camera is back. Back off if it keeps dropping us.
+            guard savedCameraID == peripheral.identifier || pendingPairing != nil else { return }
+            let delay = min(30, failedLinks == 0 ? 1 : 2 << min(failedLinks, 4))
+            AppLog.write(.ble, "reconnecting in \(delay) s")
+            reconnectTask?.cancel()
+            reconnectTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay) * 1_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                self.connect(peripheral, name: peripheral.name ?? "camera")
+            }
         }
     }
 }

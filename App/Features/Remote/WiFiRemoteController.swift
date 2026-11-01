@@ -29,12 +29,15 @@ final class WiFiRemoteController {
     @ObservationIgnored private var video: TCPStream?
     @ObservationIgnored private var remote: FujiRemoteSession?
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
+    /// Set while we tear down on purpose, so socket errors aren't reported as faults.
+    @ObservationIgnored private var stopping = false
 
     var isLive: Bool { if case .live = phase { return true } else { return false } }
 
-    /// Joins the camera's network (any SSID starting with "FUJIFILM-"), then runs the handshake.
-    func connect(joinNetwork: Bool) async {
-        disconnect()
+    /// Runs the handshake. With `joinNetwork` (needs the Hotspot entitlement, paid accounts only)
+    /// it first asks iOS to join any network starting with "FUJIFILM-".
+    func connect(joinNetwork: Bool = false) async {
+        await shutdown()
         if joinNetwork {
             phase = .joining
             note("joining FUJIFILM-… wi-fi")
@@ -67,9 +70,26 @@ final class WiFiRemoteController {
             phase = .live(cameraName.isEmpty ? "camera" : cameraName)
             note("live")
         } catch {
-            let msg = (error as? CustomStringConvertible)?.description ?? error.localizedDescription
-            fail("\(msg). on the camera, open wireless communication and make sure the phone is on its FUJIFILM-… network.")
+            fail(Self.explain(error))
         }
+    }
+
+    /// Plain-language fault copy: the problem, then the next step.
+    static func explain(_ error: Error) -> String {
+        if let nw = error as? NWError, case let .posix(code) = nw {
+            switch code {
+            case .ENETDOWN, .ENETUNREACH, .EHOSTUNREACH, .ETIMEDOUT:
+                return "the phone isn't on the camera's wi-fi. open settings → wi-fi, join FUJIFILM-…, then connect again."
+            case .ECONNREFUSED:
+                return "the camera refused the connection. on the camera, open wireless communication again, then connect."
+            default: break
+            }
+        }
+        if let p = error as? PTPError, p == .timeout {
+            return "the camera didn't answer. check it shows the wireless communication screen, then connect again."
+        }
+        if let r = error as? FujiRemoteSession.RemoteError { return r.description }
+        return "\(error). on the camera, open wireless communication and check the phone is on its FUJIFILM-… network."
     }
 
     func shutter() async {
@@ -85,9 +105,25 @@ final class WiFiRemoteController {
     }
 
     func disconnect() {
+        Task { await shutdown() }
+    }
+
+    /// Ends remote mode cleanly: stop the reader loops, tell the camera we're leaving, then close sockets.
+    private func shutdown() async {
+        stopping = true
+        defer { stopping = false }
         tasks.forEach { $0.cancel() }
         tasks = []
-        if let remote { Task { await remote.disconnect() } }
+        if let remote {
+            note("disconnecting")
+            // Say goodbye, but don't hang if the camera is already gone.
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await remote.disconnect() }
+                group.addTask { try? await Task.sleep(nanoseconds: 2_000_000_000) }
+                await group.next()
+                group.cancelAll()
+            }
+        }
         [video, events, command].forEach { $0?.close() }
         video = nil; events = nil; command = nil; remote = nil
         frame = nil
@@ -126,7 +162,10 @@ final class WiFiRemoteController {
                         if let rate { self?.fps = rate }
                     }
                 } catch {
-                    await MainActor.run { self?.fail("live view stopped: \(error.localizedDescription). connect again.") }
+                    await MainActor.run {
+                        guard let self, !self.stopping, !Task.isCancelled else { return }
+                        self.fail("live view stopped: \(error). move closer to the camera and connect again.")
+                    }
                     break
                 }
             }
@@ -134,6 +173,7 @@ final class WiFiRemoteController {
     }
 
     private func fail(_ msg: String) {
+        guard !stopping else { return }
         note("fault: \(msg)")
         tasks.forEach { $0.cancel() }
         phase = .fault(msg)

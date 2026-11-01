@@ -22,7 +22,9 @@ open Resync.xcodeproj
 
 Set your team under *Signing & Capabilities* and run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 
-- **Free Apple ID:** delete the `HotspotConfiguration` key from `App/Support/Resync.entitlements`. You then join the camera's `FUJIFILM-…` network yourself in Settings, and the rest works the same.
+- **Free Apple ID (personal team):** works as is. For remote, join the camera's `FUJIFILM-…` network in Settings → Wi-Fi before tapping *connect*.
+- **Paid developer account:** you can add the `HotspotConfiguration` key back to `App/Support/Resync.entitlements` (the exact line is in a comment there). The app can then join the camera's network itself once you turn on *join wi-fi for me* in remote.
+- **7-day limit:** apps signed by a personal team expire after 7 days. Re-run from Xcode to refresh it.
 - **Protocol tests:** `cd FujiKit && swift test`. These need no device.
 
 ## camera setup

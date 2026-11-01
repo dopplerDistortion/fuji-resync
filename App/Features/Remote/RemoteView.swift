@@ -4,7 +4,7 @@ import SwiftUI
 struct RemoteView: View {
     @Environment(WiFiRemoteController.self) private var wifi
     @Environment(BLECameraController.self) private var ble
-    @AppStorage("remote.autoJoin") private var autoJoin = true
+    @AppStorage("remote.autoJoin") private var autoJoin = false
 
     var body: some View {
         Screen(path: ["remote"], title: "remote", subtitle: "live view and shutter over the camera's wi-fi.") {
@@ -31,7 +31,7 @@ struct RemoteView: View {
                 case .fault: StatusMark(state: .fault, text: "stopped")
                 }
                 Toggle(isOn: $autoJoin) {
-                    Text("join FUJIFILM-… wi-fi for me").font(Typeface.body(14)).foregroundStyle(Token.foreground)
+                    Text("join FUJIFILM-… wi-fi for me · paid dev account").font(Typeface.body(14)).foregroundStyle(Token.foreground)
                 }
                 .tint(Token.foreground)
                 HStack(spacing: 8) {
@@ -50,7 +50,7 @@ struct RemoteView: View {
 
             if !wifi.isLive {
                 Panel(title: "setup") {
-                    Text("1. on the camera: menu → wireless communication (or the wi-fi shortcut). it shows a FUJIFILM-… network.\n2. tap connect. accept the 'resync' request on the camera the first time.\n3. stay within a few metres; live view is about 640 px wide.")
+                    Text("1. on the camera: menu → wireless communication (or the wi-fi shortcut). it shows a FUJIFILM-… network.\n2. on the phone: settings → wi-fi → join that network, then come back and tap connect. accept the 'resync' request on the camera the first time.\n3. stay within a few metres; live view is about 640 px wide.")
                         .font(Typeface.body(14)).foregroundStyle(Token.foreground)
                         .fixedSize(horizontal: false, vertical: true)
                 }

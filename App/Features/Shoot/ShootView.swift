@@ -228,7 +228,7 @@ extension View {
             .foregroundStyle(lit ? Token.ink : Token.foreground)
             .padding(.horizontal, 9)
             .frame(minWidth: 32, minHeight: 32)
-            .background(lit ? Token.foreground : Token.background.opacity(0.8))
+            .background(lit ? Token.foreground : Token.background)
             .overlay(Rectangle().strokeBorder(Token.border, lineWidth: 1))
             .contentShape(Rectangle())
     }

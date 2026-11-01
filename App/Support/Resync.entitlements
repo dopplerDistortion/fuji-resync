@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Personal (free) teams can't sign the Hotspot capability, so it's off by default.
+	     With a paid developer account, add this key back to let the app join the
+	     camera's FUJIFILM-… network by itself, then turn on "join wi-fi for me" in remote:
+	     <key>com.apple.developer.networking.HotspotConfiguration</key><true/> -->
+</dict>
+</plist>

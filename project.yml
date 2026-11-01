@@ -1,0 +1,44 @@
+name: Resync
+options:
+  bundleIdPrefix: ing.goksen
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+packages:
+  FujiKit:
+    path: FujiKit
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Resync:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - "Support/Info.plist"
+          - "Support/*.entitlements"
+    dependencies:
+      - package: FujiKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ing.goksen.resync
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: App/Support/Resync.entitlements
+        INFOPLIST_FILE: App/Support/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+schemes:
+  Resync:
+    build:
+      targets:
+        Resync: all
+    test:
+      targets: []

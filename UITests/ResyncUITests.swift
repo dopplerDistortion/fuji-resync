@@ -62,7 +62,7 @@ final class ResyncUITests: XCTestCase {
         XCTAssertEqual(el("path.current").label, "recipes")
     }
 
-    func testTabsSwitchAndShutterStaysSquare() {
+    func testTabsSwitchAndShutterWaitsForLiveView() {
         launch()
         for name in ["shoot", "recipes", "camera", "log"] {
             tab(name)
@@ -70,12 +70,9 @@ final class ResyncUITests: XCTestCase {
             snap("02 tab \(name)")
         }
         tab("shoot")
-        let shutter = el("shutter")
-        XCTAssertTrue(shutter.waitForExistence(timeout: 2))
-        // The first device build stretched the shutter over half the screen.
-        XCTAssertLessThanOrEqual(shutter.frame.width, 100)
-        XCTAssertLessThanOrEqual(shutter.frame.height, 100)
-        XCTAssertEqual(shutter.frame.width, shutter.frame.height, accuracy: 1)
+        // Without live view the camera's actions stay out of the way and the map has the room.
+        XCTAssertTrue(el("map").waitForExistence(timeout: 2))
+        XCTAssertFalse(el("shutter").exists, "the shutter row only shows with live view")
     }
 
     func testRecipesShowCameraMarksAndPullQueues() {

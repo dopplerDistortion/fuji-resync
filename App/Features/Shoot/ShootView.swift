@@ -2,10 +2,12 @@ import UIKit
 import SwiftUI
 import FujiKit
 
-/// The shoot tab, as in the prototype: a geotag strip, a viewfinder that takes the screen, and
-/// one row of recipe chip, square shutter and timer. Live view lives inside the viewfinder.
+/// The shoot tab: a geotag strip and a viewfinder that takes the screen. Without live view the
+/// viewfinder is the photo map; with it, one row of recipe chip, square shutter and timer
+/// joins below. Live view lives inside the viewfinder.
 struct ShootView: View {
     @Environment(BLECameraController.self) private var ble
+    @Environment(WiFiRemoteController.self) private var wifi
     @Environment(AppNav.self) private var nav
 
     var body: some View {
@@ -33,7 +35,10 @@ struct ShootView: View {
                             .padding(.bottom, 12)
                     }
                 } bottom: {
-                    ShutterRow()
+                    // The camera's actions come with live view; without it the map has the room.
+                    if wifi.isLive || wifi.frame != nil {
+                        ShutterRow()
+                    }
                 }
             }
         }

@@ -281,6 +281,18 @@ private struct MenuPanel: View {
             let below = a.midY < g.size.height / 2
             ZStack(alignment: .topLeading) {
                 Token.background.opacity(closing ? 0 : (dark || reduceMotion ? 0.6 : 0.3))
+                    // The scrim leaves the anchor clear, so the row or button that opened the
+                    // menu stays lit at full strength.
+                    .mask {
+                        Rectangle()
+                            .overlay {
+                                Rectangle()
+                                    .frame(width: a.width, height: a.height)
+                                    .position(x: a.midX, y: a.midY)
+                                    .blendMode(.destinationOut)
+                            }
+                            .compositingGroup()
+                    }
                     .contentShape(Rectangle())
                     .onTapGesture(perform: dismiss)
                     .accessibilityElement()
@@ -293,8 +305,8 @@ private struct MenuPanel: View {
                     list
                         .frame(width: width)
                         .padding(.leading, x)
-                        .padding(.top, below ? a.maxY + 6 : 0)
-                        .padding(.bottom, below ? 0 : g.size.height - a.minY + 6)
+                        .padding(.top, below ? a.maxY + 10 : 0)
+                        .padding(.bottom, below ? 0 : g.size.height - a.minY + 10)
                     if below { Spacer(minLength: 0) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

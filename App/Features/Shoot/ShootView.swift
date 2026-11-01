@@ -63,7 +63,21 @@ struct ShootView: View {
 /// `geotag · synced 10:42 · ±4 m ………… frames 0012`
 private struct GeotagStrip: View {
     @Environment(BLECameraController.self) private var ble
+    @Environment(WiFiRemoteController.self) private var wifi
     @Environment(ShutterState.self) private var shutter
+    @State private var firing = false
+
+    private func fire() {
+        guard !firing else { return }
+        firing = true
+        Haptic.play(.heavy)
+        Task { @MainActor in
+            await ble.shutter()
+            shutter.shots += 1
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            firing = false
+        }
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -73,12 +87,21 @@ private struct GeotagStrip: View {
             Spacer(minLength: 8)
             Text("frames").foregroundStyle(Token.mutedForeground)
             Text(String(format: "%04d", shutter.shots)).foregroundStyle(Token.foreground).monospacedDigit()
+            // Without live view the shutter row is gone; the Bluetooth remote stays one tap away.
+            if ble.canShutter, !wifi.isLive {
+                Button(action: fire) {
+                    Text(firing ? "■ fired" : "◉ fire").chip(lit: firing)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("fire the shutter over bluetooth")
+                .accessibilityIdentifier("strip.fire")
+            }
         }
         .font(Typeface.body(13))
         .lineLimit(1)
         .padding(.horizontal, Token.gutter)
         .frame(height: 38)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var geotag: String {

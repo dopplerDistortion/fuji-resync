@@ -1,3 +1,7 @@
 // Shared build settings. Personal signing lives in Config/Local.xcconfig (gitignored).
 // Copy Config/Local.xcconfig.example to Config/Local.xcconfig and put your team ID in it.
+
+// Entitlements any team can sign. Local.xcconfig can point this at Resync-Hotspot.entitlements.
+RESYNC_ENTITLEMENTS = App/Support/Resync.entitlements
+
 #include? "Local.xcconfig"

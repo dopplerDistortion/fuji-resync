@@ -257,7 +257,7 @@ private struct QueueRow: View {
     private var failed: Bool { if case .failed = item.state { return true } else { return false } }
 }
 
-extension CameraPreset: Identifiable {
+extension CameraPreset: @retroactive Identifiable {
     public var id: Int { slot }
 }
 

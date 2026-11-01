@@ -32,7 +32,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ing.goksen.resync
         TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: App/Support/Resync.entitlements
+        CODE_SIGN_ENTITLEMENTS: $(RESYNC_ENTITLEMENTS)
         INFOPLIST_FILE: App/Support/Info.plist
         GENERATE_INFOPLIST_FILE: NO
 schemes:

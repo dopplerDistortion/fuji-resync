@@ -197,7 +197,7 @@ private struct WiFiPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 switch wifi.phase {
                 case .idle:
-                    Text("on the camera, open wireless communication. resync joins its FUJIFILM-… wi-fi and starts live view.")
+                    Text("on the camera, open wireless communication. resync joins its FUJIFILM-… wi-fi and starts live view. if it can't, join that network in settings › wi-fi first.")
                         .font(Typeface.body(14)).fixedSize(horizontal: false, vertical: true)
                     FXButton("start live view", grow: true) { start() }
                 case .joining, .connecting:

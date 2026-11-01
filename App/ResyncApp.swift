@@ -14,6 +14,7 @@ struct ResyncApp: App {
     @State private var shutter = ShutterState()
     @State private var session = ShootingSession()
     @State private var places = PhotoPlaces(filename: UITest.isOn ? "uitest-photo-places.json" : "photo-places.json")
+    @State private var routes = SessionRoutes(filename: UITest.isOn ? "uitest-session-routes.json" : "session-routes.json")
 
     init() {
         AppLog.session()
@@ -46,6 +47,7 @@ struct ResyncApp: App {
                 .environment(shutter)
                 .environment(session)
                 .environment(places)
+                .environment(routes)
                 .preferredColorScheme(.dark)
                 .tint(Token.foreground)
         }
@@ -100,6 +102,7 @@ struct RootView: View {
     @Environment(ShootingSession.self) private var session
     @Environment(ShutterState.self) private var shutter
     @Environment(PhotoPlaces.self) private var places
+    @Environment(SessionRoutes.self) private var routes
     @AppStorage("booted") private var booted = false
     @AppStorage("wifiIdleMinutes") private var wifiIdleMinutes = 5
     @SceneStorage("tab") private var savedTab: String?
@@ -164,10 +167,12 @@ struct RootView: View {
 
     private func restore() {
         ble.onGeotag = { [places] loc in places.record(loc) }
+        session.routes = routes
         #if DEBUG
         if UITest.isOn {
             store.seedCameraForUITests()
             places.seedForUITests()
+            routes.seedForUITests()
             nav.tab = .recipes
             return
         }

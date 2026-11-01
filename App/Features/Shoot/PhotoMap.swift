@@ -3,43 +3,67 @@ import SwiftUI
 
 /// Where the photos on the card were taken: on your Mapbox style when a token is set, else on
 /// Apple's map in greyscale. The pins and chips are ours: a bone square per place (a count when several photos
-/// share it) and a small hollow square for each location resync sent the camera.
+/// share it), a small hollow square for each location resync sent the camera, and a shooting
+/// session's route as a bone line, from a hollow square where it started.
 struct PhotoMap: View {
     var dimmed: Bool
     @Environment(PhotoPlaces.self) private var places
+    @Environment(SessionRoutes.self) private var routes
     @Environment(USBCameraController.self) private var usb
     @State private var picked: String?
     @State private var centre: CLLocationCoordinate2D?
-    /// Bumped to frame every pin again.
+    /// Bumped to frame every pin again, or `framing` when set.
     @State private var fitTick = 0
+    @State private var framing: [CLLocationCoordinate2D]?
+    @State private var pickingRoute = false
+    /// `latest` (the running session's route, else the last one), `none`, or a route's id.
+    @AppStorage("map.route") private var routePick = "latest"
+
+    private var shown: SessionRoute? {
+        switch routePick {
+        case "none": return nil
+        case "latest": return routes.routes.first
+        default: return routes.routes.first { $0.id.uuidString == routePick } ?? routes.routes.first
+        }
+    }
 
     var body: some View {
         let pins = Pin.group(places.places)
         let trail = places.sent.suffix(300).map(\.coordinate)
-        let fit = PhotoMapFit(coordinates: places.places.map(\.coordinate) + trail)
+        let route = shown
+        let line = route?.coordinates ?? []
+        let fit = PhotoMapFit(coordinates: framing ?? (places.places.map(\.coordinate) + trail + line))
         ZStack(alignment: .topLeading) {
             Group {
                 if MapboxSetup.isOn {
-                    MapboxPhotoLayer(pins: pins, trail: trail, fit: fit, fitTick: fitTick,
-                                     picked: $picked, centre: $centre)
+                    MapboxPhotoLayer(pins: pins, trail: trail, route: line, routeEnded: route?.isOpen == false,
+                                     fit: fit, fitTick: fitTick, picked: $picked, centre: $centre)
                 } else {
-                    ApplePhotoLayer(pins: pins, trail: trail, fit: fit, fitTick: fitTick,
-                                    picked: $picked, centre: $centre)
+                    ApplePhotoLayer(pins: pins, trail: trail, route: line, routeEnded: route?.isOpen == false,
+                                    fit: fit, fitTick: fitTick, picked: $picked, centre: $centre)
                 }
             }
             .opacity(dimmed ? 0.2 : 1)
             .allowsHitTesting(!dimmed)
             .accessibilityIdentifier("map")
 
-            if !dimmed { chips(pins) }
+            if !dimmed { chips(pins, route: route) }
         }
         .transaction { $0.animation = nil }
         // Listen for the cable from here too, so plugging in on the shoot tab fills the map.
         .onAppear { usb.start() }
-        .onChange(of: places.places.count) { _, _ in fitTick += 1 }
+        .onChange(of: places.places.count) { _, _ in framing = nil; fitTick += 1 }
+        .fxSheet(isPresented: $pickingRoute, title: "routes", meta: "\(routes.routes.count) session\(routes.routes.count == 1 ? "" : "s")") {
+            RoutePicker(pick: $routePick) { r in
+                pickingRoute = false
+                // Frame the route picked; fit frames everything again.
+                framing = r.map(\.coordinates).flatMap { $0.isEmpty ? nil : $0 }
+                fitTick += 1
+            }
+        }
     }
 
-    private func chips(_ pins: [Pin]) -> some View {
+    private func chips(_ pins: [Pin], route: SessionRoute?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 HStack(spacing: 6) {
@@ -49,8 +73,22 @@ struct PhotoMap: View {
                 }
                 .chip(lit: false)
                 Spacer(minLength: 0)
-                if !places.places.isEmpty || !places.sent.isEmpty {
+                if !routes.routes.isEmpty {
                     Button {
+                        pickingRoute = true
+                        Haptic.play(.selection)
+                    } label: {
+                        // Bone while the route is the session running now.
+                        Text(route.map { "route " + $0.distanceText } ?? "route off").chip(lit: route?.isOpen == true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(route.map { "route, \($0.title), \($0.distanceText)" } ?? "route, off")
+                    .accessibilityHint("picks a shooting session's route")
+                    .accessibilityIdentifier("map.routes")
+                }
+                if !places.places.isEmpty || !places.sent.isEmpty || route != nil {
+                    Button {
+                        framing = nil
                         fitTick += 1
                         picked = nil
                         Haptic.play(.selection)
@@ -120,6 +158,8 @@ struct PhotoMapFit: Equatable {
 private struct ApplePhotoLayer: View {
     var pins: [Pin]
     var trail: [CLLocationCoordinate2D]
+    var route: [CLLocationCoordinate2D]
+    var routeEnded: Bool
     var fit: PhotoMapFit
     var fitTick: Int
     @Binding var picked: String?
@@ -128,6 +168,18 @@ private struct ApplePhotoLayer: View {
 
     var body: some View {
         Map(position: $position, interactionModes: [.pan, .zoom]) {
+            if route.count > 1 {
+                MapPolyline(coordinates: route)
+                    .stroke(Token.foreground, style: RouteMark.stroke)
+            }
+            if let first = route.first {
+                Annotation("", coordinate: first, anchor: .center) { RouteMark(end: false) }
+                    .annotationTitles(.hidden)
+            }
+            if routeEnded, route.count > 1, let last = route.last {
+                Annotation("", coordinate: last, anchor: .center) { RouteMark(end: true) }
+                    .annotationTitles(.hidden)
+            }
             ForEach(Array(trail.enumerated()), id: \.offset) { _, c in
                 Annotation("", coordinate: c, anchor: .center) { TrailMark() }
                     .annotationTitles(.hidden)
@@ -160,6 +212,63 @@ struct TrailMark: View {
         Rectangle().strokeBorder(Token.mutedForeground, lineWidth: 1)
             .frame(width: 5, height: 5)
             .allowsHitTesting(false)
+    }
+}
+
+/// Where a session's route starts (a hollow bone square) and, once it has ended, where it ends
+/// (the same with a bone dot). The route itself is a 3 pt bone line.
+struct RouteMark: View {
+    var end: Bool
+
+    static let stroke = StrokeStyle(lineWidth: 3, lineCap: .square, lineJoin: .bevel)
+
+    var body: some View {
+        Rectangle().fill(Token.ink)
+            .overlay(Rectangle().strokeBorder(Token.foreground, lineWidth: 1.5))
+            .overlay { if end { Rectangle().fill(Token.foreground).frame(width: 3, height: 3) } }
+            .frame(width: 9, height: 9)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The sheet behind the map's route chip: the latest session, none, then every session's route,
+/// newest first, with its distance, time and fixes.
+private struct RoutePicker: View {
+    @Binding var pick: String
+    var done: (SessionRoute?) -> Void
+    @Environment(SessionRoutes.self) private var routes
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                SelectRow(title: "latest session", subtitle: "the one running now, else the last one",
+                          meta: pick == "latest" ? "■" : "", selected: pick == "latest") {
+                    pick = "latest"
+                    done(routes.routes.first)
+                }
+                .stepIn(0)
+                SelectRow(title: "none", subtitle: "photos and geotags only",
+                          meta: pick == "none" ? "■" : "", selected: pick == "none") {
+                    pick = "none"
+                    done(nil)
+                }
+                .accessibilityIdentifier("route.none")
+                .stepIn(1)
+                ForEach(Array(routes.routes.enumerated()), id: \.element.id) { i, r in
+                    let on = pick == r.id.uuidString
+                    SelectRow(title: r.title,
+                              subtitle: "\(r.distanceText) · \(r.durationText) · \(r.points.count) fix\(r.points.count == 1 ? "" : "es")",
+                              meta: r.isOpen ? "live" : (on ? "■" : ""), selected: on) {
+                        pick = r.id.uuidString
+                        done(r)
+                    }
+                    .accessibilityIdentifier("route.row")
+                    .stepIn(i + 2)
+                }
+            }
+            .overlay(alignment: .top) { Rectangle().fill(Token.border).frame(height: 1) }
+        }
     }
 }
 

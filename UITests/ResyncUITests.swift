@@ -166,6 +166,26 @@ final class ResyncUITests: XCTestCase {
         snap("10 map pin")
     }
 
+    func testShootMapPicksASessionRoute() {
+        launch()
+        tab("shoot")
+        let chip = el("map.routes")
+        XCTAssertTrue(chip.waitForExistence(timeout: 3), "the seeded sessions put a route chip on the map")
+        chip.tap()
+        let none = el("route.none")
+        XCTAssertTrue(none.waitForExistence(timeout: 2))
+        let rows = app.descendants(matching: .any).matching(identifier: "route.row")
+        XCTAssertEqual(rows.count, 2, "two seeded sessions, newest first")
+        snap("11 route picker")
+        none.tap()
+        waitFor(chip, "label == 'route, off'")
+        chip.tap()
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 2))
+        rows.element(boundBy: 1).tap()
+        waitFor(chip, "label BEGINSWITH 'route, ' AND NOT (label ENDSWITH 'off')")
+        snap("11 route on map")
+    }
+
     func testLongPressOpensTheRowMenu() {
         launch()
         let r = row(containing: "kodachrome")

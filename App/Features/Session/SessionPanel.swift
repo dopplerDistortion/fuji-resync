@@ -8,6 +8,7 @@ struct SessionPanel: View {
     @Environment(BLECameraController.self) private var ble
     @Environment(ShutterState.self) private var shutter
     @Environment(PhotoPlaces.self) private var places
+    @Environment(SessionRoutes.self) private var routes
 
     var body: some View {
         Panel(title: "session", meta: session.isActive ? "live activity" : "off") {
@@ -27,6 +28,12 @@ struct SessionPanel: View {
                             .accessibilityIdentifier("session.end")
                     }
                     .padding(.horizontal, 14).padding(.vertical, 8)
+                    // `route ┄┄ 1.2 km · 84 fixes`, drawn on the shoot tab's map as it grows.
+                    if let r = routes.open {
+                        LeaderRow(label: "route", value: r.points.isEmpty ? "waiting for a fix" : "\(r.distanceText) · \(r.points.count) fix\(r.points.count == 1 ? "" : "es")",
+                                  valueColor: r.points.isEmpty ? Token.mutedForeground : Token.foreground)
+                            .accessibilityIdentifier("session.route")
+                    }
                     if let fault = session.fault {
                         Text(fault)
                             .font(Typeface.body(12)).foregroundStyle(Token.signal)
@@ -35,7 +42,7 @@ struct SessionPanel: View {
                     }
                 } else {
                     if let last = session.last { lastLine(last) }
-                    Text("keeps the camera linked and geotagged with the phone in a pocket, and shows the link and geotags on the lock screen. the card counts its photos the next time the camera is plugged in.")
+                    Text("keeps the camera linked and geotagged with the phone in a pocket, shows the link and geotags on the lock screen, and records your route for the shoot tab's map. the card counts its photos the next time the camera is plugged in.")
                         .font(Typeface.body(13))
                         .foregroundStyle(Token.mutedForeground)
                         .fixedSize(horizontal: false, vertical: true)

@@ -21,6 +21,8 @@ final class ShootingSession {
     /// Why the Live Activity couldn't start, if it couldn't. The session still runs without it.
     private(set) var fault: String?
     var isActive: Bool { startedAt != nil }
+    /// Where each session's route is kept. Set once at launch.
+    @ObservationIgnored var routes: SessionRoutes?
 
     @ObservationIgnored private var activity: Activity<SessionAttributes>?
     @ObservationIgnored private var background: CLBackgroundActivitySession?
@@ -35,6 +37,7 @@ final class ShootingSession {
     func start(ble: BLECameraController, shutter: ShutterState) {
         guard !isActive else { return }
         let now = Date()
+        routes?.begin(at: now)
         bind(ble: ble, shutter: shutter, since: now)
         firstShot = shutter.shots
         firstGeotag = ble.syncCount
@@ -74,7 +77,10 @@ final class ShootingSession {
         startedAt = nil
         background?.invalidate()
         background = nil
+        ble?.location.onFixes = nil
         ble?.location.hold(false)
+        let route = routes?.open.map { " · route \($0.distanceText), \($0.points.count) fixes" } ?? ""
+        routes?.finish(at: Date())
         watcher?.cancel()
         watcher = nil
         heartbeat?.cancel()
@@ -84,13 +90,18 @@ final class ShootingSession {
         }
         activity = nil
         fault = nil
-        AppLog.write(.app, "shooting session ended · \(final.geotags) geotags · \(final.frames) fired from resync")
+        AppLog.write(.app, "shooting session ended · \(final.geotags) geotags · \(final.frames) fired from resync" + route)
         Haptic.play(.selection)
     }
 
     /// Picks up a session whose Live Activity outlived the last run of the app.
     func restore(ble: BLECameraController, shutter: ShutterState) {
-        guard !isActive, let a = Activity<SessionAttributes>.activities.first else { return }
+        guard !isActive, let a = Activity<SessionAttributes>.activities.first else {
+            // No session to pick up, so a route it left open ends where its fixes stopped.
+            if !isActive { routes?.closeOpen() }
+            return
+        }
+        routes?.resume(start: a.attributes.startedAt)
         bind(ble: ble, shutter: shutter, since: a.attributes.startedAt)
         let carried = a.content.state
         firstShot = shutter.shots - carried.frames
@@ -111,6 +122,8 @@ final class ShootingSession {
         startedAt = since
         fault = nil
         background = CLBackgroundActivitySession()
+        // Every fix while the session runs goes on its route, in the background too.
+        ble.location.onFixes = { [weak self] fixes in self?.routes?.add(fixes) }
         ble.location.hold(true)
     }
 

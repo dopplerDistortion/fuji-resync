@@ -18,12 +18,14 @@ enum MapboxSetup {
     static var isOn: Bool { style != nil }
 }
 
-/// The photo map on the Mapbox style, with our own pins, trail and phone mark drawn as SwiftUI
-/// views on top. Pan and zoom only: no rotation or tilt, no compass or scale bar. The Mapbox logo
-/// and the attribution button stay visible, low in the corners beside the live view button.
+/// The photo map on the Mapbox style, with a session's route as a line layer and our own pins,
+/// trail and phone mark drawn as SwiftUI views on top. Pan and zoom only: no rotation or tilt,
+/// no compass or scale bar. The Mapbox logo and the attribution button stay visible, low in the corners beside the live view button.
 struct MapboxPhotoLayer: View {
     var pins: [Pin]
     var trail: [CLLocationCoordinate2D]
+    var route: [CLLocationCoordinate2D]
+    var routeEnded: Bool
     var fit: PhotoMapFit
     var fitTick: Int
     @Binding var picked: String?
@@ -32,6 +34,26 @@ struct MapboxPhotoLayer: View {
 
     var body: some View {
         Map(viewport: $viewport) {
+            // The session's route, under the pins: bone with an ink edge so it holds on any style.
+            if route.count > 1 {
+                PolylineAnnotationGroup {
+                    PolylineAnnotation(id: "session-route", lineCoordinates: route)
+                        .lineColor(UIColor(Token.foreground))
+                        .lineWidth(3)
+                        .lineBorderColor(UIColor(Token.ink))
+                        .lineBorderWidth(1)
+                }
+                .lineCap(.square)
+                .lineJoin(.bevel)
+            }
+            if let first = route.first {
+                MapViewAnnotation(coordinate: first) { RouteMark(end: false) }
+                    .allowOverlap(true)
+            }
+            if routeEnded, route.count > 1, let last = route.last {
+                MapViewAnnotation(coordinate: last) { RouteMark(end: true) }
+                    .allowOverlap(true)
+            }
             ForEvery(Array(trail.indices), id: \.self) { i in
                 MapViewAnnotation(coordinate: trail[i]) { TrailMark() }
                     .allowOverlap(true)

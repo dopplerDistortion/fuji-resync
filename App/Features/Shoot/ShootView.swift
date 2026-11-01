@@ -24,14 +24,15 @@ struct ShootView: View {
                     VStack(spacing: 0) {
                         GeotagStrip()
                         if ble.savedCameraID == nil {
-                            ScrollView { PairPanel().padding(Token.gutter) }
-                                .scrollIndicators(.hidden)
-                        } else {
-                            if !ble.isLinked { LinkLostStrip() }
-                            Viewfinder(full: false)
+                            PairPanel()
                                 .padding(.horizontal, Token.gutter)
-                                .padding(.bottom, 12)
+                                .padding(.bottom, 14)
+                        } else if !ble.isLinked {
+                            LinkLostStrip()
                         }
+                        Viewfinder(full: false)
+                            .padding(.horizontal, Token.gutter)
+                            .padding(.bottom, 12)
                     }
                 } bottom: {
                     ShutterRow()

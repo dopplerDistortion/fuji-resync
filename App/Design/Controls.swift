@@ -145,7 +145,8 @@ struct Segmented<T: Hashable>: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(label).font(Typeface.body(14)).foregroundStyle(Token.foreground)
+            Text(label).font(Typeface.body(15)).foregroundStyle(Token.foreground)
+                .lineLimit(1).fixedSize()
             Leader()
             HStack(spacing: 0) {
                 ForEach(Array(options.enumerated()), id: \.offset) { i, o in

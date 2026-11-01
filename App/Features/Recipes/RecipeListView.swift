@@ -193,7 +193,7 @@ struct RecipeListView: View {
         let read = "read " + cam.readAt.formatted(date: .omitted, time: .shortened).lowercased()
         let n = missing.count
         let lead = "\(n) in the camera \(n == 1 ? "isn't" : "aren't") in your library"
-        return (usb.isReady ? lead : lead + " · pulls when plugged in") + " · " + read
+        return lead + " · " + read
     }
 
     private var pulling: Bool { queue.open.contains { $0.kind == .pull } }

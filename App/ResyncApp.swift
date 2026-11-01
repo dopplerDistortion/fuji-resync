@@ -95,6 +95,7 @@ struct RootView: View {
     @AppStorage("wifiIdleMinutes") private var wifiIdleMinutes = 5
     @SceneStorage("tab") private var savedTab: String?
     @State private var idleTask: Task<Void, Never>?
+    @State private var keyboardUp = false
 
     var body: some View {
         @Bindable var nav = nav
@@ -108,7 +109,7 @@ struct RootView: View {
                         LogView().tag(AppTab.log).toolbar(.hidden, for: .tabBar)
                     }
                     .overlay { OverlayHost(bottomInset: nav.chromeHidden ? 120 : 74) }
-                    if !nav.chromeHidden {
+                    if !nav.chromeHidden, !keyboardUp {
                         TabBar(selection: $nav.tab, badge: queue.open.count)
                     }
                 }
@@ -125,6 +126,9 @@ struct RootView: View {
         .foregroundStyle(Token.foreground)
         .transaction { $0.animation = nil }
         .onAppear(perform: restore)
+        // The keyboard covers the tab bar's place; the screen's own bottom bar rides on top of it.
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         // Every USB read (and the read-back after a write) refreshes the "in camera" marks.
         .onChange(of: usb.slots) { _, slots in store.updateCamera(slots) }
         // The queue drains the moment a camera is ready on USB.

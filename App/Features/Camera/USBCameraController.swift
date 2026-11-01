@@ -65,6 +65,11 @@ final class USBCameraController: NSObject {
 
     func start() {
         guard phase == .idle || phase == .needsPermission || { if case .fault = phase { return true }; return false }() else { return }
+        #if targetEnvironment(simulator)
+        // ImageCaptureCore's control authorization raises on the simulator, and there's no USB anyway.
+        phase = .searching
+        return
+        #else
         browser.requestControlAuthorization { [weak self] status in
             Task { @MainActor in
                 guard let self else { return }
@@ -76,6 +81,7 @@ final class USBCameraController: NSObject {
                 }
             }
         }
+        #endif
     }
 
     func stop() {

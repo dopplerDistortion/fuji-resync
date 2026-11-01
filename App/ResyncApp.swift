@@ -148,7 +148,9 @@ struct RootView: View {
         // The queue drains the moment a camera is ready on USB.
         .onChange(of: usb.isReady) { _, ready in if ready { drain() } }
         // Photo access can arrive after the camera is ready.
-        .onChange(of: usb.contentsAllowed) { _, ok in if ok == true, usb.isReady { Task { await readPlaces() } } }
+        .onChange(of: usb.contentsAllowed) { _, ok in if ok == true, usb.cardOpen { Task { await readPlaces() } } }
+        // In card reader mode there is no queue to drain; read the card straight away.
+        .onChange(of: usb.cardOpen) { _, open in if open, !usb.isReady { Task { await readPlaces() } } }
         .onChange(of: queue.kick) { _, _ in
             if usb.isReady { drain() } else { usb.start() }
         }

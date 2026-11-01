@@ -1,61 +1,32 @@
 import MapKit
 import SwiftUI
 
-/// Where the photos on the card were taken, on a dark, muted, greyscale map with no points of
-/// interest. The pins and chips are ours: a bone square per place (a count when several photos
+/// Where the photos on the card were taken: on your Mapbox style when a token is set, else on
+/// Apple's map in greyscale. The pins and chips are ours: a bone square per place (a count when several photos
 /// share it) and a small hollow square for each location resync sent the camera.
 struct PhotoMap: View {
     var dimmed: Bool
     @Environment(PhotoPlaces.self) private var places
     @Environment(USBCameraController.self) private var usb
-    @State private var position: MapCameraPosition = .automatic
     @State private var picked: String?
     @State private var centre: CLLocationCoordinate2D?
+    /// Bumped to frame every pin again.
+    @State private var fitTick = 0
 
     var body: some View {
         let pins = Pin.group(places.places)
-        let trail = Array(places.sent.suffix(300))
+        let trail = places.sent.suffix(300).map(\.coordinate)
+        let fit = PhotoMapFit(coordinates: places.places.map(\.coordinate) + trail)
         ZStack(alignment: .topLeading) {
-            Map(position: $position, interactionModes: [.pan, .zoom]) {
-                ForEach(Array(trail.enumerated()), id: \.offset) { _, s in
-                    Annotation("", coordinate: s.coordinate, anchor: .center) {
-                        Rectangle().strokeBorder(Token.mutedForeground, lineWidth: 1)
-                            .frame(width: 5, height: 5)
-                            .allowsHitTesting(false)
-                    }
-                    .annotationTitles(.hidden)
-                }
-                ForEach(pins) { pin in
-                    Annotation("", coordinate: pin.coordinate, anchor: .center) {
-                        PinMark(count: pin.photos.count, lit: picked == pin.id, label: picked == pin.id ? pin.label : nil,
-                                // The tag runs toward the middle of the map, so it stays on screen.
-                                tagRunsLeft: pin.coordinate.longitude > (centre?.longitude ?? pin.coordinate.longitude))
-                            .onTapGesture {
-                                picked = picked == pin.id ? nil : pin.id
-                                Haptic.play(.selection)
-                            }
-                            .accessibilityElement()
-                            .accessibilityLabel(pin.label)
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityIdentifier("map.pin")
-                    }
-                    .annotationTitles(.hidden)
-                }
-                UserAnnotation {
-                    Rectangle().strokeBorder(Token.foreground, lineWidth: 1)
-                        .frame(width: 12, height: 12)
-                        .overlay(Rectangle().fill(Token.foreground).frame(width: 4, height: 4))
+            Group {
+                if MapboxSetup.isOn {
+                    MapboxPhotoLayer(pins: pins, trail: trail, fit: fit, fitTick: fitTick,
+                                     picked: $picked, centre: $centre)
+                } else {
+                    ApplePhotoLayer(pins: pins, trail: trail, fit: fit, fitTick: fitTick,
+                                    picked: $picked, centre: $centre)
                 }
             }
-            // Fit keeps clear of our chips above; the legal label sits low at the left, beside the
-            // centred live view button.
-            .safeAreaPadding(.top, 52)
-            .safeAreaPadding(.bottom, 8)
-            .safeAreaPadding(.horizontal, 12)
-            .onMapCameraChange { ctx in centre = ctx.region.center }
-            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
-            .environment(\.colorScheme, .dark)
-            .saturation(0)
             .opacity(dimmed ? 0.2 : 1)
             .allowsHitTesting(!dimmed)
             .accessibilityIdentifier("map")
@@ -64,29 +35,8 @@ struct PhotoMap: View {
         }
         .transaction { $0.animation = nil }
         // Listen for the cable from here too, so plugging in on the shoot tab fills the map.
-        .onAppear {
-            usb.start()
-            position = fit()
-        }
-        .onChange(of: places.places.count) { _, _ in position = fit() }
-    }
-
-    /// Frames every pin with room around it, and with extra room at the bottom, so no pin lands
-    /// under the centred live view button while the legal label keeps to the bottom edge.
-    private func fit() -> MapCameraPosition {
-        let coords = places.places.map(\.coordinate) + places.sent.suffix(300).map(\.coordinate)
-        guard let first = coords.first else { return .automatic }
-        var minLat = first.latitude, maxLat = first.latitude, minLon = first.longitude, maxLon = first.longitude
-        for c in coords {
-            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
-            minLon = min(minLon, c.longitude); maxLon = max(maxLon, c.longitude)
-        }
-        let latSpan = max(maxLat - minLat, 0.004)
-        let lonSpan = max(maxLon - minLon, 0.004)
-        // 1.5× the pins' extent, then the centre moves south so the pins sit in the upper two thirds.
-        let span = MKCoordinateSpan(latitudeDelta: latSpan * 1.8, longitudeDelta: lonSpan * 1.5)
-        let centre = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2 - latSpan * 0.3, longitude: (minLon + maxLon) / 2)
-        return .region(MKCoordinateRegion(center: centre, span: span))
+        .onAppear { usb.start() }
+        .onChange(of: places.places.count) { _, _ in fitTick += 1 }
     }
 
     private func chips(_ pins: [Pin]) -> some View {
@@ -100,7 +50,7 @@ struct PhotoMap: View {
                 Spacer(minLength: 0)
                 if !places.places.isEmpty || !places.sent.isEmpty {
                     Button {
-                        position = fit()
+                        fitTick += 1
                         picked = nil
                         Haptic.play(.selection)
                     } label: { Text("fit").chip(lit: false) }
@@ -127,8 +77,121 @@ struct PhotoMap: View {
     }
 }
 
+/// The pins' extent. Each map frames it with room around it, and more room at the bottom, so no
+/// pin lands under the centred live view button.
+struct PhotoMapFit: Equatable {
+    var minLat = 0.0, maxLat = 0.0, minLon = 0.0, maxLon = 0.0
+    var coordinates: [CLLocationCoordinate2D] = []
+
+    init(coordinates: [CLLocationCoordinate2D]) {
+        self.coordinates = coordinates
+        guard let first = coordinates.first else { return }
+        minLat = first.latitude; maxLat = first.latitude; minLon = first.longitude; maxLon = first.longitude
+        for c in coordinates {
+            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
+            minLon = min(minLon, c.longitude); maxLon = max(maxLon, c.longitude)
+        }
+    }
+
+    var isEmpty: Bool { coordinates.isEmpty }
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.coordinates.count == b.coordinates.count && a.minLat == b.minLat && a.maxLat == b.maxLat
+            && a.minLon == b.minLon && a.maxLon == b.maxLon
+    }
+
+    /// Apple's map: 1.8× and 1.5× the extent, with the centre moved south so the pins sit in the
+    /// upper two thirds.
+    var region: MKCoordinateRegion? {
+        guard !isEmpty else { return nil }
+        let latSpan = max(maxLat - minLat, 0.004)
+        let lonSpan = max(maxLon - minLon, 0.004)
+        let span = MKCoordinateSpan(latitudeDelta: latSpan * 1.8, longitudeDelta: lonSpan * 1.5)
+        let centre = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2 - latSpan * 0.3, longitude: (minLon + maxLon) / 2)
+        return MKCoordinateRegion(center: centre, span: span)
+    }
+}
+
+/// Apple's map, dark, muted and greyscale with no points of interest: the map when no Mapbox
+/// token is set, as on CI.
+private struct ApplePhotoLayer: View {
+    var pins: [Pin]
+    var trail: [CLLocationCoordinate2D]
+    var fit: PhotoMapFit
+    var fitTick: Int
+    @Binding var picked: String?
+    @Binding var centre: CLLocationCoordinate2D?
+    @State private var position: MapCameraPosition = .automatic
+
+    var body: some View {
+        Map(position: $position, interactionModes: [.pan, .zoom]) {
+            ForEach(Array(trail.enumerated()), id: \.offset) { _, c in
+                Annotation("", coordinate: c, anchor: .center) { TrailMark() }
+                    .annotationTitles(.hidden)
+            }
+            ForEach(pins) { pin in
+                Annotation("", coordinate: pin.coordinate, anchor: .center) {
+                    PinButton(pin: pin, picked: $picked, centre: centre)
+                }
+                .annotationTitles(.hidden)
+            }
+            UserAnnotation { UserMark() }
+        }
+        // Fit keeps clear of our chips above; the legal label sits low at the left, beside the
+        // centred live view button.
+        .safeAreaPadding(.top, 52)
+        .safeAreaPadding(.bottom, 8)
+        .safeAreaPadding(.horizontal, 12)
+        .onMapCameraChange { ctx in centre = ctx.region.center }
+        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+        .environment(\.colorScheme, .dark)
+        .saturation(0)
+        .onAppear { position = fit.region.map { .region($0) } ?? .automatic }
+        .onChange(of: fitTick) { _, _ in position = fit.region.map { .region($0) } ?? .automatic }
+    }
+}
+
+/// A small hollow square for each location resync sent the camera.
+struct TrailMark: View {
+    var body: some View {
+        Rectangle().strokeBorder(Token.mutedForeground, lineWidth: 1)
+            .frame(width: 5, height: 5)
+            .allowsHitTesting(false)
+    }
+}
+
+/// Where the phone is: a bone outline with a bone dot.
+struct UserMark: View {
+    var body: some View {
+        Rectangle().strokeBorder(Token.foreground, lineWidth: 1)
+            .frame(width: 12, height: 12)
+            .overlay(Rectangle().fill(Token.foreground).frame(width: 4, height: 4))
+    }
+}
+
+/// A pin that shows its file and time when tapped.
+struct PinButton: View {
+    var pin: Pin
+    @Binding var picked: String?
+    var centre: CLLocationCoordinate2D?
+
+    var body: some View {
+        PinMark(count: pin.photos.count, lit: picked == pin.id, label: picked == pin.id ? pin.label : nil,
+                // The tag runs toward the middle of the map, so it stays on screen.
+                tagRunsLeft: pin.coordinate.longitude > (centre?.longitude ?? pin.coordinate.longitude))
+            .onTapGesture {
+                picked = picked == pin.id ? nil : pin.id
+                Haptic.play(.selection)
+            }
+            .accessibilityElement()
+            .accessibilityLabel(pin.label)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("map.pin")
+    }
+}
+
 /// Photos taken within about 100 m of each other share a pin.
-private struct Pin: Identifiable {
+struct Pin: Identifiable {
     var id: String
     var coordinate: CLLocationCoordinate2D
     var photos: [PhotoPlace]
@@ -158,7 +221,7 @@ private struct Pin: Identifiable {
 
 /// A 10 pt bone square with an ink edge; inverted when picked, with its file and time in a
 /// bone tag beside it; the count beside it when several photos share it.
-private struct PinMark: View {
+struct PinMark: View {
     var count: Int
     var lit: Bool
     var label: String?

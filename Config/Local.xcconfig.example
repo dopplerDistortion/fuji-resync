@@ -6,3 +6,5 @@ DEVELOPMENT_TEAM = YOURTEAMID
 // RESYNC_ENTITLEMENTS = App/Support/Resync-Hotspot.entitlements
 // Optional: use your own bundle ID if ing.goksen.resync is taken on your account.
 // PRODUCT_BUNDLE_IDENTIFIER = ing.goksen.resync
+// Optional: a public Mapbox token (pk.…) turns on the Mapbox map. Never a secret sk. token.
+// MAPBOX_ACCESS_TOKEN = pk.…

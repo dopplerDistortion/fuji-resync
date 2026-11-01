@@ -7,6 +7,9 @@ options:
 packages:
   FujiKit:
     path: FujiKit
+  MapboxMaps:
+    url: https://github.com/mapbox/mapbox-maps-ios.git
+    exactVersion: 11.26.0
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
@@ -29,6 +32,7 @@ targets:
       - path: Shared
     dependencies:
       - package: FujiKit
+      - package: MapboxMaps
       - target: ResyncWidgets
     settings:
       base:

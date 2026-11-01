@@ -4,4 +4,8 @@
 // Entitlements any team can sign. Local.xcconfig can point this at Resync-Hotspot.entitlements.
 RESYNC_ENTITLEMENTS = App/Support/Resync.entitlements
 
+// A public Mapbox token (pk.…) goes in Local.xcconfig, never here: the repo is public. With no
+// token the app keeps Apple's map.
+MAPBOX_ACCESS_TOKEN =
+
 #include? "Local.xcconfig"

@@ -34,6 +34,14 @@ struct CameraView: View {
                         FaultPanel(title: "usb-c", message: message + " check the cable and the camera's connection mode, then try again.",
                                    action: ("try again", { usb.stop(); usb.start() }))
                     }
+                    if case .cardOnly = usb.phase {
+                        Panel(title: "usb-c", meta: "card reader") {
+                            Text("the camera is in usb card reader mode. resync reads where your photos were taken, for the map. to send or pull recipes, set the camera's usb mode to raw conv. / backup restore.")
+                                .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(14)
+                        }
+                    }
                     queuePanel
                     slotsPanel
                     if !usb.isReady, store.camera == nil { setupSteps }
@@ -135,6 +143,7 @@ struct CameraView: View {
         case .needsPermission: return "not allowed"
         case .opening: return "opening"
         case .ready: return usb.busy ?? "ptp ready"
+        case .cardOnly: return usb.busy ?? "card reader"
         case .fault: return "stopped"
         }
     }

@@ -49,8 +49,8 @@ struct PhotoPlace: Codable, Hashable, Identifiable {
 @MainActor
 @Observable
 final class PhotoPlaces {
-    /// A location resync sent the camera: the camera asks as it shoots, so these trail the
-    /// photos taken while linked, even before the card is read.
+    /// A location resync sent the camera: it asks every few seconds while linked, so these trail
+    /// where the camera was, even before the card is read.
     struct Sent: Codable, Hashable {
         var at: Date
         var latitude: Double
@@ -68,6 +68,9 @@ final class PhotoPlaces {
         var checked: [String]
         var readAt: Date?
         var sent: [Sent]?
+        /// 2: files are marked read only when their read worked. Lists saved before that are
+        /// dropped, so the photos they marked are read again.
+        var version: Int?
     }
 
     private let url: URL
@@ -78,7 +81,7 @@ final class PhotoPlaces {
         url = dir.appendingPathComponent(filename)
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode(Saved.self, from: data) {
             places = saved.places
-            checked = Set(saved.checked)
+            checked = (saved.version ?? 1) >= 2 ? Set(saved.checked) : []
             readAt = saved.readAt
             sent = saved.sent ?? []
         }
@@ -118,7 +121,7 @@ final class PhotoPlaces {
     #endif
 
     private func save() {
-        let saved = Saved(places: places, checked: Array(checked), readAt: readAt, sent: sent)
+        let saved = Saved(places: places, checked: Array(checked), readAt: readAt, sent: sent, version: 2)
         if let data = try? JSONEncoder().encode(saved) { try? data.write(to: url, options: .atomic) }
     }
 }

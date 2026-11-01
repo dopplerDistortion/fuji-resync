@@ -151,7 +151,7 @@ struct LinkSheet: View {
                     row("shutter", ble.canShutter ? "bluetooth · ready" : (wifi.isLive ? "wi-fi" : "paused"), 1)
                     row("live view", wifi.isLive ? String(format: "wi-fi · %.0f fps", wifi.fps) : "asleep", 2)
                     row("queue", queue.open.isEmpty ? "empty" : "\(queue.open.count) waiting for cable", 3)
-                    row("usb-c", usb.isReady ? "ptp ready" : "no cable", 4)
+                    row("usb-c", usb.isReady ? "ptp ready" : (usb.cardOpen ? "card reader" : "no cable"), 4)
                 }
                 .overlay(alignment: .top) { Rectangle().fill(Token.border).frame(height: 1) }
                 HStack(spacing: 8) {

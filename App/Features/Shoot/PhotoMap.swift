@@ -64,7 +64,29 @@ struct PhotoMap: View {
         }
         .transaction { $0.animation = nil }
         // Listen for the cable from here too, so plugging in on the shoot tab fills the map.
-        .onAppear { usb.start() }
+        .onAppear {
+            usb.start()
+            position = fit()
+        }
+        .onChange(of: places.places.count) { _, _ in position = fit() }
+    }
+
+    /// Frames every pin with room around it, and with extra room at the bottom, so no pin lands
+    /// under the centred live view button while the legal label keeps to the bottom edge.
+    private func fit() -> MapCameraPosition {
+        let coords = places.places.map(\.coordinate) + places.sent.suffix(300).map(\.coordinate)
+        guard let first = coords.first else { return .automatic }
+        var minLat = first.latitude, maxLat = first.latitude, minLon = first.longitude, maxLon = first.longitude
+        for c in coords {
+            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
+            minLon = min(minLon, c.longitude); maxLon = max(maxLon, c.longitude)
+        }
+        let latSpan = max(maxLat - minLat, 0.004)
+        let lonSpan = max(maxLon - minLon, 0.004)
+        // 1.5× the pins' extent, then the centre moves south so the pins sit in the upper two thirds.
+        let span = MKCoordinateSpan(latitudeDelta: latSpan * 1.8, longitudeDelta: lonSpan * 1.5)
+        let centre = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2 - latSpan * 0.3, longitude: (minLon + maxLon) / 2)
+        return .region(MKCoordinateRegion(center: centre, span: span))
     }
 
     private func chips(_ pins: [Pin]) -> some View {
@@ -78,7 +100,7 @@ struct PhotoMap: View {
                 Spacer(minLength: 0)
                 if !places.places.isEmpty || !places.sent.isEmpty {
                     Button {
-                        position = .automatic
+                        position = fit()
                         picked = nil
                         Haptic.play(.selection)
                     } label: { Text("fit").chip(lit: false) }

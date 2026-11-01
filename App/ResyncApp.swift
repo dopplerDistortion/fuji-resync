@@ -65,6 +65,9 @@ enum RecipeRoute: Hashable {
 final class AppNav {
     var tab: AppTab = .recipes
     var recipes: [RecipeRoute] = []
+    /// The library's search and filter, kept while a recipe is open.
+    var recipeQuery = ""
+    var recipeFilter = "all"
     var chromeHidden = false
 
     /// Pushes or pops with a hard cut, not a slide.

@@ -15,9 +15,13 @@ struct RecipesTab: View {
         let top = nav.recipes.last
         GeometryReader { g in
             ZStack {
-                RecipeListView()
-                    .allowsHitTesting(top == nil)
-                    .accessibilityHidden(top != nil)
+                // The list is only built while it shows: at the root, or under a back swipe.
+                // Its search and filter live in AppNav, so they outlast the push.
+                if top == nil || pull > 0 {
+                    RecipeListView()
+                        .allowsHitTesting(top == nil)
+                        .accessibilityHidden(top != nil)
+                }
                 if let top {
                     destination(top)
                         .id(top)
@@ -88,8 +92,9 @@ struct RecipeListView: View {
     @Environment(USBCameraController.self) private var usb
     @Environment(Overlays.self) private var overlays
     @Environment(AppNav.self) private var nav
-    @State private var query = ""
-    @State private var filter: Filter = .all
+    private var query: String { nav.recipeQuery }
+    private var filter: Filter { Filter(rawValue: nav.recipeFilter) ?? .all }
+    @State private var gate = SwipeGate()
     @State private var importing = false
     @State private var more = false
     @State private var sending: Recipe?
@@ -154,7 +159,7 @@ struct RecipeListView: View {
             .background(Token.background)
         } bottom: {
             BottomBar {
-                FXField(text: $query, prompt: "grep recipes", mark: "/")
+                FXField(text: Binding(get: { nav.recipeQuery }, set: { nav.recipeQuery = $0 }), prompt: "grep recipes", mark: "/")
                 FXButton("new", compact: true) { newRecipe() }
                 FXButton("…", .outline, compact: true, haptic: .selection) { more = true }
                     .accessibilityLabel("more")
@@ -178,7 +183,7 @@ struct RecipeListView: View {
                 ForEach(Filter.allCases, id: \.self) { f in
                     let n = f == .all ? store.recipes.count : inCamera
                     Button {
-                        filter = f
+                        nav.recipeFilter = f.rawValue
                         Haptic.play(.selection)
                     } label: {
                         Text("\(f.rawValue) \(n)")
@@ -251,7 +256,7 @@ struct RecipeListView: View {
     private func row(_ r: Recipe) -> some View {
         let slots = store.slots(for: r)
         let state: SlotBadge.State = !slots.isEmpty ? .inCamera(slots) : (queue.queuedSlot(for: r).map { .queued($0) } ?? .none)
-        return SwipeRow(id: r.id, open: $swiped,
+        return SwipeRow(id: r.id, open: $swiped, gate: gate,
                         leading: SwipeAction(title: "send", tone: .signal) { sending = r },
                         trailing: [
                             SwipeAction(title: "copy") { duplicate(r) },
@@ -260,11 +265,13 @@ struct RecipeListView: View {
             Button {
                 // A long press opens the row's menu; the release that ends it isn't a tap.
                 if heldRow == r.id { heldRow = nil; return }
+                // Nor is the lift at the end of a sideways swipe.
+                guard !gate.blocked else { return }
                 nav.cut { nav.recipes.append(.edit(r.id)) }
             } label: {
                 EmptyView()
             }
-            .buttonStyle(RecipeRowStyle(recipe: r, state: state, unsupported: !r.filmSimulation.onXT30II))
+            .buttonStyle(RecipeRowStyle(recipe: r, state: state, unsupported: !r.filmSimulation.onXT30II, held: rowMenu == r.id))
             .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
                 heldRow = r.id
                 Haptic.play(.medium)
@@ -359,9 +366,11 @@ private struct RecipeRowStyle: ButtonStyle {
     var recipe: Recipe
     var state: SlotBadge.State
     var unsupported: Bool
+    /// Lit while its long-press menu is open, so the menu shows whose it is.
+    var held = false
 
     func makeBody(configuration: Configuration) -> some View {
-        RecipeRowLabel(recipe: recipe, state: state, unsupported: unsupported, pressed: configuration.isPressed)
+        RecipeRowLabel(recipe: recipe, state: state, unsupported: unsupported, pressed: configuration.isPressed, held: held)
     }
 }
 
@@ -370,10 +379,11 @@ private struct RecipeRowLabel: View {
     var state: SlotBadge.State
     var unsupported: Bool
     var pressed: Bool
+    var held: Bool
     @Environment(\.swiping) private var swiping
 
     var body: some View {
-        let lit = pressed && !swiping
+        let lit = (pressed && !swiping) || held
         return HStack(spacing: 12) {
             Text(">").font(Typeface.body(15)).opacity(lit ? 1 : 0).accessibilityHidden(true)
                 .frame(width: 10)

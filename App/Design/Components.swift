@@ -806,6 +806,15 @@ extension EnvironmentValues {
     }
 }
 
+/// Set while a sideways swipe runs and briefly after, so the row under it can ignore the
+/// lift that ends the swipe. One gate can serve a whole list.
+@MainActor
+final class SwipeGate {
+    fileprivate var until = Date.distantPast
+    var blocked: Bool { Date() < until }
+    fileprivate func hold() { until = Date().addingTimeInterval(0.35) }
+}
+
 /// A row that slides sideways in 8 pt steps to show its actions: one on the leading side,
 /// which a long swipe runs outright, and up to two on the trailing side. It settles open or
 /// shut in one cut, never a spring. One row stands open at a time; a tap on it shuts it.
@@ -813,6 +822,7 @@ extension EnvironmentValues {
 struct SwipeRow<ID: Hashable, Content: View>: View {
     var id: ID
     @Binding var open: ID?
+    var gate: SwipeGate?
     var leading: SwipeAction?
     var trailing: [SwipeAction] = []
     @ViewBuilder var content: Content
@@ -889,6 +899,7 @@ struct SwipeRow<ID: Hashable, Content: View>: View {
                     if axis == .horizontal, open != nil, !isOpen { open = nil }
                 }
                 guard axis == .horizontal else { return }
+                gate?.hold()
                 drag = (v.translation.width / 8).rounded(.towardZero) * 8
                 let past = leading != nil && settled + drag > fullSwipe
                 if past != armed {
@@ -899,6 +910,7 @@ struct SwipeRow<ID: Hashable, Content: View>: View {
             .onEnded { v in
                 defer { axis = nil; drag = 0; armed = false }
                 guard axis == .horizontal else { return }
+                gate?.hold()
                 let x = settled + v.translation.width
                 let fling = settled + v.predictedEndTranslation.width
                 if let leading, x > fullSwipe {

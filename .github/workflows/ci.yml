@@ -7,8 +7,12 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      # The Mapbox SDK's binaries are built with Swift 6.2, so the build needs Xcode 26.
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "xcode: $XCODE"
+          sudo xcode-select -s "$XCODE"
       - name: FujiKit tests
         working-directory: FujiKit
         run: swift test

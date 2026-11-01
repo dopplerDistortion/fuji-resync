@@ -122,11 +122,16 @@ final class ResyncUITests: XCTestCase {
         let highlight = el("stepper.highlight")
         XCTAssertTrue(highlight.waitForExistence(timeout: 2))
         let before = highlight.value as? String
-        // Tapping the element scrolls it into view (its centre is the leader, which does nothing).
-        highlight.tap()
+        // Bring the row well above the pinned bottom bar, so a tap on its + cell lands on it.
+        var swipes = 0
+        while highlight.frame.midY > app.frame.height * 0.55, swipes < 5 {
+            app.swipeUp(velocity: .slow)
+            swipes += 1
+        }
         // The + button is the last 44 pt cell, 14 pt in from the row's right edge.
         highlight.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -36, dy: 0)).tap()
-        XCTAssertNotEqual(highlight.value as? String, before)
+        snap("05 stepper +")
+        XCTAssertNotEqual(highlight.value as? String, before, "highlight row at \(highlight.frame) in \(app.frame)")
 
         button(beginningWith: "simulation").tap()
         let acros = button(beginningWith: "acros")

@@ -280,3 +280,18 @@ struct RecipeBundleFile: Transferable {
             .suggestedFileName { $0.name }
     }
 }
+
+#if DEBUG
+extension RecipeStore {
+    /// UI tests only: pretend the camera was read, with the first three recipes in C1–C3 and one
+    /// the library doesn't have in C5. Kept in memory, never written to disk.
+    func seedCameraForUITests() {
+        var slots = recipes.prefix(3).enumerated().map { i, r in
+            CameraSnapshot.Slot(slot: i + 1, name: r.name, recipe: r)
+        }
+        let stranger = Recipe(name: "Eterna Dusk", filmSimulation: .eterna, highlight: -1, shadow: 1)
+        slots.append(CameraSnapshot.Slot(slot: 5, name: "ETERNA DUSK", recipe: stranger))
+        camera = CameraSnapshot(slots: slots, readAt: Date())
+    }
+}
+#endif

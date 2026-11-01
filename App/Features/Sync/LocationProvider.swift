@@ -29,11 +29,29 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    /// The Bluetooth link wants fixes while it is up.
+    private var wanted = false
+    /// A shooting session holds location on in the background, with iOS's indicator, at 10 m.
+    private var held = false
+
     func setActive(_ on: Bool) {
-        if on {
+        wanted = on
+        apply()
+    }
+
+    func hold(_ on: Bool) {
+        held = on
+        apply()
+    }
+
+    private func apply() {
+        if wanted || held {
             requestPermission()
-            manager.allowsBackgroundLocationUpdates = manager.authorizationStatus == .authorizedAlways
-            manager.showsBackgroundLocationIndicator = false
+            manager.allowsBackgroundLocationUpdates = held || manager.authorizationStatus == .authorizedAlways
+            manager.showsBackgroundLocationIndicator = held
+            manager.desiredAccuracy = held ? kCLLocationAccuracyNearestTenMeters : kCLLocationAccuracyHundredMeters
+            manager.distanceFilter = held ? 10 : 50
+            manager.pausesLocationUpdatesAutomatically = !held
             manager.startUpdatingLocation()
             manager.startMonitoringSignificantLocationChanges()
         } else {

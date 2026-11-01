@@ -1,0 +1,232 @@
+import XCTest
+
+/// Drives the app in the simulator with `-uitest`: a fresh library of the three starter
+/// recipes, C1–C3 plus an unknown C5 "read" from the camera, no cable and no Bluetooth.
+/// Every test attaches screenshots (kept on success) for a look against the prototype.
+final class ResyncUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    // MARK: Helpers
+
+    private func launch(fresh: Bool = false) {
+        app = XCUIApplication()
+        app.launchArguments = ["-uitest"] + (fresh ? ["-uitest-fresh"] : [])
+        app.launch()
+    }
+
+    private func el(_ id: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+
+    private func button(beginningWith text: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", text)).firstMatch
+    }
+
+    private var rows: XCUIElementQuery { app.buttons.matching(identifier: "recipe.row") }
+
+    private func row(containing name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == 'recipe.row' AND label CONTAINS[c] %@", name)).firstMatch
+    }
+
+    private func snap(_ name: String) {
+        let a = XCTAttachment(screenshot: app.screenshot())
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+    }
+
+    private func tab(_ name: String) {
+        el("tab.\(name)").tap()
+        XCTAssertTrue(el("path.current").waitForExistence(timeout: 2))
+    }
+
+    private func waitFor(_ e: XCUIElement, _ predicate: String, timeout: TimeInterval = 4) {
+        let exp = expectation(for: NSPredicate(format: predicate), evaluatedWith: e)
+        wait(for: [exp], timeout: timeout)
+    }
+
+    // MARK: Tests
+
+    func testBootScreenSkipsToRecipes() {
+        launch(fresh: true)
+        let skip = button(beginningWith: "skip")
+        XCTAssertTrue(skip.waitForExistence(timeout: 5), "the boot log should end on the pairing step")
+        XCTAssertTrue(app.descendants(matching: .any)["resync"].exists)
+        snap("01 boot")
+        skip.tap()
+        XCTAssertTrue(el("path.current").waitForExistence(timeout: 2))
+        XCTAssertEqual(el("path.current").label, "recipes")
+    }
+
+    func testTabsSwitchAndShutterWaitsForLiveView() {
+        launch()
+        for name in ["shoot", "recipes", "camera", "log"] {
+            tab(name)
+            XCTAssertEqual(el("path.current").label, name)
+            snap("02 tab \(name)")
+        }
+        tab("shoot")
+        // Without live view the camera's actions stay out of the way and the map has the room.
+        XCTAssertTrue(el("map").waitForExistence(timeout: 2))
+        XCTAssertFalse(el("shutter").exists, "the shutter row only shows with live view")
+    }
+
+    func testRecipesShowCameraMarksAndPullQueues() {
+        launch()
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertTrue(el("filter.inCamera").label.contains("3"), "all three starters are in C1–C3")
+        let pull = el("pullbar")
+        XCTAssertTrue(pull.exists, "C5 isn't in the library, so the pull bar shows")
+        XCTAssertTrue(pull.label.contains("1 in the camera"))
+        snap("03 recipes")
+
+        pull.tap()
+        XCTAssertTrue(el("toast").waitForExistence(timeout: 2))
+        snap("03 pull queued")
+
+        tab("camera")
+        XCTAssertTrue(app.staticTexts["pull c1–c7 → library"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["waiting for cable"].exists)
+        snap("03 camera queue")
+    }
+
+    func testNewRecipeSavesItselfAndListsIt() {
+        launch()
+        button(beginningWith: "new").tap()
+        XCTAssertEqual(el("path.current").label, "untitled")
+        let name = app.textFields.firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 2))
+        name.tap()
+        name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + "test roll")
+        waitFor(el("editor.save"), "label BEGINSWITH 'saved'", timeout: 10)
+        snap("04 editor new")
+
+        button(beginningWith: "back to recipes").tap()
+        XCTAssertTrue(row(containing: "test roll").waitForExistence(timeout: 2))
+        XCTAssertEqual(rows.count, 4)
+    }
+
+    func testEditorStepperAndSimulationMenu() {
+        launch()
+        row(containing: "kodachrome").tap()
+        XCTAssertEqual(el("path.current").label, "kodachrome-64")
+
+        let highlight = el("stepper.highlight")
+        XCTAssertTrue(highlight.waitForExistence(timeout: 2))
+        let before = highlight.value as? String
+        // Bring the row well above the pinned bottom bar, so a tap on its + cell lands on it.
+        var swipes = 0
+        while highlight.frame.midY > app.frame.height * 0.55, swipes < 5 {
+            app.swipeUp(velocity: .slow)
+            swipes += 1
+        }
+        // The + button is the last 44 pt cell, 14 pt in from the row's right edge.
+        highlight.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.5)).withOffset(CGVector(dx: -36, dy: 0)).tap()
+        snap("05 stepper +")
+        XCTAssertNotEqual(highlight.value as? String, before, "highlight row at \(highlight.frame) in \(app.frame)")
+
+        button(beginningWith: "simulation").tap()
+        let acros = button(beginningWith: "acros")
+        XCTAssertTrue(acros.waitForExistence(timeout: 2))
+        // On shorter phones acros sits below the sheet's edge; scroll the list to it.
+        var scrolls = 0
+        while !acros.isHittable || acros.frame.maxY > app.frame.height - 40, scrolls < 6 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+            scrolls += 1
+        }
+        snap("05 simulation sheet")
+        acros.tap()
+        XCTAssertTrue(el("stepper.mono warm/cool").waitForExistence(timeout: 2), "monochrome swaps color for warm/cool")
+        waitFor(el("editor.save"), "label BEGINSWITH 'saved'", timeout: 10)
+        snap("05 editor acros")
+
+        // Our own back swipe: a drag from the left edge cuts back to the list.
+        let edge = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 6, dy: 0))
+        edge.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
+        waitFor(el("path.current"), "label == 'recipes'")
+    }
+
+    func testShootMapShowsPhotoPins() {
+        launch()
+        tab("shoot")
+        XCTAssertTrue(el("map").waitForExistence(timeout: 3), "with no live view the viewfinder is a map")
+        let pins = app.descendants(matching: .any).matching(identifier: "map.pin")
+        XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
+        snap("10 shoot map")
+        pins.element(boundBy: 0).tap()
+        XCTAssertTrue(el("map.picked").waitForExistence(timeout: 2))
+        XCTAssertTrue(el("map.picked").label.contains("dscf01"))
+        snap("10 map pin")
+    }
+
+    func testLongPressOpensTheRowMenu() {
+        launch()
+        let r = row(containing: "kodachrome")
+        XCTAssertTrue(r.waitForExistence(timeout: 3))
+        r.press(forDuration: 0.9)
+        let dup = button(beginningWith: "duplicate")
+        XCTAssertTrue(dup.waitForExistence(timeout: 2), "the long press opens our menu, not the system's")
+        XCTAssertTrue(button(beginningWith: "share as text").exists)
+        snap("09 row menu")
+        dup.tap()
+        XCTAssertTrue(el("toast").waitForExistence(timeout: 2))
+        XCTAssertEqual(el("path.current").label, "recipes", "the release after a long press doesn't open the recipe")
+        XCTAssertEqual(rows.count, 4)
+    }
+
+    func testSendQueuesAWriteUntilTheCableIsIn() {
+        launch()
+        row(containing: "kodachrome").tap()
+        button(beginningWith: "send to camera").tap()
+        let c6 = el("slot.c6")
+        XCTAssertTrue(c6.waitForExistence(timeout: 2))
+        c6.tap()
+        snap("06 send sheet")
+        button(beginningWith: "queue for c6").tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'waits for the cable'")).firstMatch.waitForExistence(timeout: 2))
+        snap("06 queued")
+        el("sheet.close").tap()
+        XCTAssertFalse(el("sheet.close").waitForExistence(timeout: 1), "a tap above the sheet closes it")
+        XCTAssertTrue(el("tab.badge").waitForExistence(timeout: 2))
+        XCTAssertEqual(el("tab.badge").label, "1 queued")
+    }
+
+    func testSwipeDeleteThenUndo() {
+        launch()
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 3))
+        let count = rows.count
+        row(containing: "classic negative").swipeLeft()
+        let delete = app.buttons["delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 2))
+        snap("07 swiped")
+        delete.tap()
+        XCTAssertEqual(rows.count, count - 1)
+        let undo = app.buttons["undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 2))
+        snap("07 deleted")
+        undo.tap()
+        XCTAssertTrue(row(containing: "classic negative").waitForExistence(timeout: 2))
+        XCTAssertEqual(rows.count, count)
+    }
+
+    func testLogSettings() {
+        launch()
+        tab("log")
+        let haptics = el("setting.haptics")
+        XCTAssertTrue(haptics.waitForExistence(timeout: 2))
+        let before = haptics.value as? String
+        haptics.tap()
+        XCTAssertNotEqual(haptics.value as? String, before)
+        haptics.tap()
+        app.buttons["15 min"].tap()
+        XCTAssertTrue(app.buttons["15 min"].isSelected)
+        snap("08 log")
+    }
+}

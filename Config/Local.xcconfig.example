@@ -1,5 +1,10 @@
 // Copy to Config/Local.xcconfig (gitignored) and set your team ID.
 // Find it in Xcode → Settings → Accounts, or: security find-certificate -c "Apple Development" -p | openssl x509 -noout -subject  (the OU field)
 DEVELOPMENT_TEAM = YOURTEAMID
+// Paid developer team: let the app join the camera's FUJIFILM-… Wi-Fi by itself.
+// Personal (free) teams can't sign this; leave it commented out.
+// RESYNC_ENTITLEMENTS = App/Support/Resync-Hotspot.entitlements
 // Optional: use your own bundle ID if ing.goksen.resync is taken on your account.
 // PRODUCT_BUNDLE_IDENTIFIER = ing.goksen.resync
+// Optional: a public Mapbox token (pk.…) turns on the Mapbox map. Never a secret sk. token.
+// MAPBOX_ACCESS_TOKEN = pk.…

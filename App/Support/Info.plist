@@ -32,6 +32,12 @@
 		<string>GeistMono-Regular.ttf</string>
 		<string>GeistMono-Medium.ttf</string>
 	</array>
+	<key>MBXAccessToken</key>
+	<string>$(MAPBOX_ACCESS_TOKEN)</string>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>bluetooth-central</string>
@@ -39,6 +45,8 @@
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>resync talks to your camera over Bluetooth to send location and time and to fire the shutter.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>resync reads where the photos on your camera's card were taken, to pin them on the map.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>resync sends your location to the camera so photos are geotagged.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -48,7 +56,14 @@
 	<key>NSCameraUsageDescription</key>
 	<string>resync reads and writes the custom settings on a camera connected over USB-C.</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchLogo</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<false/>
+	</dict>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 	<key>UISupportedInterfaceOrientations</key>

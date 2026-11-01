@@ -7,6 +7,9 @@ options:
 packages:
   FujiKit:
     path: FujiKit
+  MapboxMaps:
+    url: https://github.com/mapbox/mapbox-maps-ios.git
+    exactVersion: 11.26.0
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
@@ -26,19 +29,59 @@ targets:
         excludes:
           - "Support/Info.plist"
           - "Support/*.entitlements"
+      - path: Shared
     dependencies:
       - package: FujiKit
+      - package: MapboxMaps
+      - target: ResyncWidgets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ing.goksen.resync
         TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: App/Support/Resync.entitlements
+        CODE_SIGN_ENTITLEMENTS: $(RESYNC_ENTITLEMENTS)
         INFOPLIST_FILE: App/Support/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  ResyncWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+        excludes:
+          - "Info.plist"
+      - path: Shared
+      - path: App/Design/Tokens.swift
+      - path: App/Resources/Fonts
+        excludes:
+          - "*.txt"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ing.goksen.resync.widgets
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: Widgets/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: ""
+        SKIP_INSTALL: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+  ResyncUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Resync
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ing.goksen.resync.uitests
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Resync
+        CODE_SIGN_ENTITLEMENTS: ""
 schemes:
   Resync:
     build:
       targets:
         Resync: all
     test:
-      targets: []
+      targets:
+        - ResyncUITests

@@ -6,7 +6,8 @@ import FujiKit
 
 /// Bluetooth link to the camera: pairing, automatic location + time sync, and a shutter remote.
 ///
-/// The camera asks for a location over the geotag-request characteristic; we answer with the
+/// The camera asks for a location over the geotag-request characteristic, about every 10 s while
+/// linked (not once per photo); we answer with the
 /// phone's latest fix. iOS keeps this running in the background thanks to the
 /// `bluetooth-central` and `location` background modes.
 @MainActor
@@ -40,6 +41,8 @@ final class BLECameraController: NSObject {
     }
 
     @ObservationIgnored let location = LocationProvider()
+    /// Called with every location sent to the camera, for the map's trail.
+    @ObservationIgnored var onGeotag: (@MainActor (CLLocation) -> Void)?
     @ObservationIgnored private var central: CBCentralManager!
     @ObservationIgnored private var peripheral: CBPeripheral?
     @ObservationIgnored private var characteristics: [String: CBCharacteristic] = [:]
@@ -131,6 +134,24 @@ final class BLECameraController: NSObject {
         p.writeValue(FujiBLE.Shutter.release, for: c, type: .withResponse)
     }
 
+    enum ShutterAction { case half, press, release }
+
+    /// One step of a held shutter: half-press to focus, press to fire (and hold for bulb), release.
+    func shutter(_ action: ShutterAction) {
+        guard let p = peripheral, let c = characteristics[FujiBLE.Characteristic.shutter] else {
+            note("shutter not available on this link")
+            return
+        }
+        let value: Data
+        switch action {
+        case .half: value = FujiBLE.Shutter.halfPress
+        case .press: value = FujiBLE.Shutter.press
+        case .release: value = FujiBLE.Shutter.release
+        }
+        p.writeValue(FujiBLE.Shutter.command, for: c, type: .withResponse)
+        p.writeValue(value, for: c, type: .withResponse)
+    }
+
     var canShutter: Bool { isLinked && characteristics[FujiBLE.Characteristic.shutter] != nil }
 
     // MARK: Internals
@@ -163,6 +184,7 @@ final class BLECameraController: NSObject {
         note(String(format: "geotag → %.5f, %.5f ±%.0fm", loc.coordinate.latitude, loc.coordinate.longitude, loc.horizontalAccuracy))
         lastSync = Date()
         lastSentLocation = loc
+        onGeotag?(loc)
         syncCount += 1
     }
 

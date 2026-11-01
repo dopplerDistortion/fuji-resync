@@ -29,6 +29,14 @@ Run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 - **UI tests:** `xcodebuild -project Resync.xcodeproj -scheme Resync -destination 'platform=iOS Simulator,name=iPhone 18 Pro' test`. They launch the app with `-uitest`: a fresh library of the starter recipes, C1–C3 plus an unknown C5 as if read from the camera, and no permission prompts. Screenshots are attached to the result bundle.
 - **Protocol tests:** `cd FujiKit && swift test`. These need no device.
 
+## release
+
+- **App Store text, privacy answers and review notes:** [`AppStore/metadata.md`](AppStore/metadata.md).
+- **Privacy policy and support pages:** `docs/`, served by GitHub Pages (Settings → Pages → `main`, `/docs`).
+- **Screenshots:** `scripts/screenshots.sh` on a Mac writes the 6.9" set from the simulator to `build/screenshots/`, with a 9:41 status bar. `RESYNC_SIM` picks another simulator.
+- **TestFlight:** `scripts/archive.sh` archives a Release build with a timestamp build number and uploads it to App Store Connect. It needs `Config/Local.xcconfig` with the team, the Hotspot entitlements and the Mapbox token, and the app's record in App Store Connect. `ARCHIVE_ONLY=1` stops after the archive.
+- **Privacy manifest:** `App/Support/PrivacyInfo.xcprivacy`. Add a reason there if the app starts using another [required-reason API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api).
+
 ## camera setup
 
 - **recipes over USB:** MENU → SET UP → CONNECTION SETTING → PC CONNECTION MODE → **USB RAW CONV./BACKUP RESTORE**. Use a USB-C data cable no longer than 1.5 m.

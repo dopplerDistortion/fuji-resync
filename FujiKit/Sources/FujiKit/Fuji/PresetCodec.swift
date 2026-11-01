@@ -125,7 +125,8 @@ public enum PresetCodec {
         if let v = u16(FujiProp.colorChromeBlue), let s = EffectStrength(code: v) { r.colorChromeBlue = s }
         if let v = u16(FujiProp.smoothSkin), let s = EffectStrength(code: v) { r.smoothSkin = s }
         if let v = u16(FujiProp.whiteBalance), let s = WhiteBalance(code: v) { r.whiteBalance = s }
-        if let v = u16(FujiProp.wbColorTemp), v >= 2500 { r.kelvin = Int(v) }
+        // The slot keeps an old Kelvin value around even when WB isn't colour temperature.
+        if r.whiteBalance == .kelvin, let v = u16(FujiProp.wbColorTemp), v >= 2500 { r.kelvin = Int(v) }
         if let v = i16(FujiProp.wbShiftRed) { r.wbShiftRed = v }
         if let v = i16(FujiProp.wbShiftBlue) { r.wbShiftBlue = v }
         if let v = tone(FujiProp.highlightTone) { r.highlight = v }

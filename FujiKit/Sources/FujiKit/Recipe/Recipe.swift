@@ -131,13 +131,35 @@ public struct Recipe: Codable, Hashable, Identifiable, Sendable {
     }
 
     /// Same settings, ignoring identity, notes and timestamps. Used to spot duplicates and to verify writes.
+    /// True when both recipes would put the same values on the camera. Ignores names and notes,
+    /// the Kelvin value unless white balance is colour temperature, and smooth skin, which the
+    /// X-T30 II can't store.
     public func sameSettings(as o: Recipe) -> Bool {
-        var a = self.normalized(), b = o.normalized()
-        a.id = b.id; a.name = b.name
-        a.isoNote = ""; b.isoNote = ""; a.exposureNote = ""; b.exposureNote = ""
-        a.notes = ""; b.notes = ""; a.source = ""; b.source = ""; a.tags = []; b.tags = []
-        a.createdAt = b.createdAt; a.updatedAt = b.updatedAt
-        return a == b
+        settingsKey == o.settingsKey
+    }
+
+    /// The settings that reach the camera, with everything else blanked. Equal keys mean the same recipe.
+    public var settingsKey: Recipe {
+        var r = normalized()
+        r.id = Recipe.keyID
+        r.name = ""
+        r.isoNote = ""; r.exposureNote = ""; r.notes = ""; r.source = ""; r.tags = []
+        r.createdAt = .distantPast; r.updatedAt = .distantPast
+        if r.whiteBalance != .kelvin { r.kelvin = 0 }
+        r.smoothSkin = .off
+        return r
+    }
+
+    private static let keyID = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+
+    /// Name compared the way people read it: case, extra spaces and the camera's upper-casing don't matter.
+    public var nameKey: String {
+        name.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Same name (ignoring case and spacing) and same camera settings.
+    public func isDuplicate(of o: Recipe) -> Bool {
+        nameKey == o.nameKey && sameSettings(as: o)
     }
 
     /// Clamps every value to what an X-T30 II accepts and zeroes fields the simulation ignores.

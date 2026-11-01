@@ -39,6 +39,13 @@ struct RecipeEditorView: View {
                 FaultPanel(title: "x-t30 ii", message: "\(draft.filmSimulation.label) isn't on the X-T30 II. pick another simulation before sending.")
             }
 
+            if let cam = store.camera {
+                let on = store.slots(for: draft)
+                Text(on.isEmpty ? "> not on the camera (last read \(cam.readAt.formatted(date: .omitted, time: .shortened)))."
+                                : "■ on the camera in \(on.map { "c\($0)" }.joined(separator: ", ")) (last read \(cam.readAt.formatted(date: .omitted, time: .shortened))).")
+                    .font(Typeface.body(13)).foregroundStyle(on.isEmpty ? Token.mutedForeground : Token.foreground)
+            }
+
             Panel(title: "identity") {
                 FXTextField(label: "name · max \(Recipe.maxNameLength)", text: $draft.name)
                     .onChange(of: draft.name) { _, v in if v.count > Recipe.maxNameLength { draft.name = String(v.prefix(Recipe.maxNameLength)) } }

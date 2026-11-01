@@ -177,6 +177,33 @@ final class PresetCodecTests: XCTestCase {
         XCTAssertEqual(u16(w[FujiProp.imageSize]), 7, "no base value: default is written")
     }
 
+    func testWrittenThenReadBackCountsAsSameRecipe() {
+        // The slot still holds an old Kelvin value and the camera's upper-case name.
+        var r = kodachrome(); r.kelvin = 5500; r.smoothSkin = .weak
+        var raw = dict(PresetCodec.encode(r))
+        var k = ByteWriter(); k.u16(4200); raw[FujiProp.wbColorTemp] = k.data
+        var one = ByteWriter(); one.u16(1); raw[FujiProp.smoothSkin] = one.data
+        let back = PresetCodec.decode(CameraPreset(slot: 5, name: r.name.uppercased(), raw: raw))
+        XCTAssertTrue(back.isDuplicate(of: r))
+        XCTAssertEqual(back.settingsKey, r.settingsKey)
+    }
+
+    func testKelvinMattersOnlyForColorTemperature() {
+        var a = kodachrome(), b = kodachrome()
+        a.kelvin = 4200; b.kelvin = 6000
+        XCTAssertTrue(a.sameSettings(as: b))
+        a.whiteBalance = .kelvin; b.whiteBalance = .kelvin
+        XCTAssertFalse(a.sameSettings(as: b))
+    }
+
+    func testNameKeyIgnoresCaseAndSpacing() {
+        var a = kodachrome(), b = kodachrome()
+        a.name = "Kodachrome  64 "; b.name = "KODACHROME 64"
+        XCTAssertTrue(a.isDuplicate(of: b))
+        b.dynamicRange = .dr400
+        XCTAssertFalse(a.isDuplicate(of: b), "same name, different settings is a different recipe")
+    }
+
     func testDynamicRangeAuto() {
         var r = kodachrome(); r.dynamicRange = .auto
         let w = dict(PresetCodec.encode(r))

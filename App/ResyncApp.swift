@@ -38,6 +38,7 @@ struct ResyncApp: App {
 
 struct RootView: View {
     @Environment(RecipeStore.self) private var store
+    @Environment(USBCameraController.self) private var usb
     @State private var path = NavigationPath()
 
     var body: some View {
@@ -58,5 +59,7 @@ struct RootView: View {
         }
         .background(Token.background.ignoresSafeArea())
         .font(Typeface.body())
+        // Every USB read (and the read-back after a write) refreshes the "on camera" marks.
+        .onChange(of: usb.slots) { _, slots in store.updateCamera(slots) }
     }
 }

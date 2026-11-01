@@ -24,9 +24,11 @@ struct CameraView: View {
                             .buttonStyle(.fx(.ghost)).disabled(usb.busy != nil)
                     }
                     ForEach(usb.slots, id: \.slot) { p in
+                        let inLibrary = store.libraryMatch(for: PresetCodec.decode(p)) != nil
                         Button { picked = p } label: {
                             LeaderRow(mark: "C\(p.slot)", label: (p.name.isEmpty ? "unnamed" : p.name).lowercased(),
-                                      value: PresetCodec.decode(p).filmSimulation.label.lowercased())
+                                      value: inLibrary ? "in library" : "not in library",
+                                      valueColor: inLibrary ? Token.foreground : Token.mutedForeground)
                         }
                         .buttonStyle(.plain)
                     }
@@ -106,8 +108,8 @@ struct SlotDetailSheet: View {
                 }
                 HStack(spacing: 8) {
                     Button("save to library") {
-                        let added = store.importData((try? RecipeBundle(recipes: [r]).encoded()) ?? Data(), fallbackName: r.name)
-                        savedNote = added > 0 ? "> saved to recipes." : "> already in recipes."
+                        let (saved, added) = store.saveFromCamera(r)
+                        savedNote = added ? "> saved to recipes." : "> already in recipes as \(saved.name.lowercased())."
                     }
                     .buttonStyle(.fx(.default, compact: true))
                     Button("close") { dismiss() }.buttonStyle(.fx(.secondary, compact: true))

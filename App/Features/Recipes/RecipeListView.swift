@@ -3,6 +3,20 @@ import SwiftUI
 import FujiKit
 import UniformTypeIdentifiers
 
+/// A library row, marked with the camera slots that hold it.
+struct RecipeRow: View {
+    var recipe: Recipe
+    var slots: [Int]
+
+    var body: some View {
+        LeaderRow(mark: slots.isEmpty ? ">" : "■",
+                  label: recipe.name.lowercased(),
+                  value: slots.isEmpty ? recipe.filmSimulation.label.lowercased()
+                                       : slots.map { "c\($0)" }.joined(separator: " ") + " · " + recipe.filmSimulation.label.lowercased(),
+                  valueColor: slots.isEmpty ? Token.mutedForeground : Token.foreground)
+    }
+}
+
 struct RecipeListView: View {
     @Environment(RecipeStore.self) private var store
     @State private var query = ""
@@ -44,13 +58,20 @@ struct RecipeListView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 ListingHeader(path: "/recipes", count: filtered.count)
+                if let cam = store.camera {
+                    Text("■ c1–c7 = on the camera at the last usb read, \(cam.readAt.formatted(date: .abbreviated, time: .shortened).lowercased()).")
+                        .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                } else {
+                    Text("> connect the camera over usb once to see which recipes are on it.")
+                        .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                }
                 if filtered.isEmpty {
                     Text("> nothing matches. clear the search or import a file.")
                         .font(Typeface.body(14)).foregroundStyle(Token.mutedForeground)
                 }
                 ForEach(filtered) { r in
                     NavigationLink(value: Route.recipe(r.id)) {
-                        LeaderRow(label: r.name.lowercased(), value: r.filmSimulation.label.lowercased())
+                        RecipeRow(recipe: r, slots: store.slots(for: r))
                     }
                     .buttonStyle(.plain)
                     .contextMenu {
@@ -69,15 +90,16 @@ struct RecipeListView: View {
     private func handleImport(_ result: Result<[URL], Error>) {
         switch result {
         case let .success(urls):
-            var added = 0
+            var total = RecipeStore.ImportResult()
             for url in urls {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 if let data = try? Data(contentsOf: url) {
-                    added += store.importData(data, fallbackName: url.deletingPathExtension().lastPathComponent)
+                    let r = store.importData(data, fallbackName: url.deletingPathExtension().lastPathComponent)
+                    total.added += r.added; total.updated += r.updated; total.skipped += r.skipped
                 }
             }
-            notice = added == 0 ? "> nothing new. those recipes are already here." : "> imported \(added) recipe\(added == 1 ? "" : "s")."
+            notice = Self.describe(total, verb: "imported")
         case let .failure(e):
             notice = "> import failed: \(e.localizedDescription)"
         }
@@ -88,7 +110,15 @@ struct RecipeListView: View {
             notice = "> clipboard is empty. copy a recipe's text first."
             return
         }
-        let added = store.importData(Data(text.utf8), fallbackName: "pasted")
-        notice = added == 0 ? "> nothing new on the clipboard." : "> pasted \(added) recipe\(added == 1 ? "" : "s")."
+        notice = Self.describe(store.importData(Data(text.utf8), fallbackName: "pasted"), verb: "pasted")
+    }
+
+    static func describe(_ r: RecipeStore.ImportResult, verb: String) -> String {
+        func n(_ c: Int) -> String { "\(c) recipe\(c == 1 ? "" : "s")" }
+        var parts: [String] = []
+        if r.added > 0 { parts.append("\(verb) \(n(r.added))") }
+        if r.updated > 0 { parts.append("updated \(n(r.updated))") }
+        if r.skipped > 0 { parts.append("\(r.skipped) already here") }
+        return parts.isEmpty ? "> nothing to import." : "> " + parts.joined(separator: ", ") + "."
     }
 }

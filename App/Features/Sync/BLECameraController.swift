@@ -114,7 +114,7 @@ final class BLECameraController: NSObject {
 
     /// Sends the current fix right now, without waiting for the camera to ask.
     func syncNow() {
-        if let loc = location.latest { send(loc) } else { location.requestOneShot { [weak self] l in self?.send(l) } }
+        if let loc = location.latest { send(loc, force: true) } else { location.requestOneShot { [weak self] l in self?.send(l, force: true) } }
     }
 
     // MARK: Shutter
@@ -151,8 +151,10 @@ final class BLECameraController: NSObject {
         central.connect(p, options: nil)
     }
 
-    private func send(_ loc: CLLocation) {
+    private func send(_ loc: CLLocation, force: Bool = false) {
         guard let p = peripheral, let c = characteristics[FujiBLE.Characteristic.geotagWrite] else { return }
+        // One answer per camera request: a pending one-shot fix can land right after we already replied.
+        if !force, let last = lastSync, Date().timeIntervalSince(last) < 2 { return }
         let packet = FujiBLE.geotagPacket(
             latitude: loc.coordinate.latitude, longitude: loc.coordinate.longitude,
             altitude: loc.verticalAccuracy >= 0 ? loc.altitude : 0, date: Date()

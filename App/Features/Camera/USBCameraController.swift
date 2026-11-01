@@ -166,8 +166,8 @@ final class USBCameraController: NSObject {
     /// JPEG or HEIF sits beside it is skipped, so one shot is one place. Returns the places found
     /// and the files read for sure, with or without GPS; a file whose read failed is left to try
     /// again next time.
-    func readPhotoPlaces(skipping: Set<String>, limit: Int = 1500) async -> (places: [PhotoPlace], checked: Set<String>) {
-        guard cardOpen, let camera else { return ([], []) }
+    func readPhotoPlaces(skipping: Set<String>, limit: Int = 1500) async -> (places: [PhotoPlace], checked: Set<String>, taken: [String: Date]) {
+        guard cardOpen, let camera else { return ([], [], [:]) }
         let all = (camera.mediaFiles ?? []).compactMap { $0 as? ICCameraFile }
         let photos = all.filter { Self.kind(of: $0.name ?? "") != nil }
         let developed = Set(photos.compactMap { f -> String? in
@@ -181,11 +181,12 @@ final class USBCameraController: NSObject {
         let files = shots.filter { !skipping.contains(($0.name ?? "").lowercased()) }.suffix(limit)
         note("card: \(all.count) files listed, \(photos.count) photos (\(photos.count - shots.count) raw beside a jpeg, skipped), \(files.count) not read yet"
             + (contentsAllowed == false ? " · photo access not allowed" : ""))
-        guard !files.isEmpty else { return ([], []) }
+        guard !files.isEmpty else { return ([], [], [:]) }
         busy = "reading photo locations"
         defer { busy = nil }
         var found: [PhotoPlace] = []
         var checked: Set<String> = []
+        var taken: [String: Date] = [:]
         var failed = 0
         var described = 0
         for f in files.reversed() {
@@ -209,11 +210,12 @@ final class USBCameraController: NSObject {
             }
             guard let props, Self.hasImageProperties(props) else { failed += 1; continue }
             checked.insert(name)
+            if let t = PhotoPlace.takenDate(metadata: props) ?? PhotoPlace.takenDate(metadata: meta) { taken[name] = t }
             if let place = PhotoPlace.from(file: name, metadata: props) { found.append(place) }
         }
         note("photo locations: \(found.count) of \(checked.count) files have gps"
             + (failed > 0 ? " · \(failed) could not be read" : ""))
-        return (found, checked)
+        return (found, checked, taken)
     }
 
     private enum PhotoKind { case jpeg, heif, raw }

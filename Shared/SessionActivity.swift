@@ -1,7 +1,7 @@
 import ActivityKit
 import Foundation
 
-/// A shooting session's Live Activity: the link, the geotags sent, and the frames fired, shown
+/// A shooting session's Live Activity: the link, the geotags sent, and the shots fired from resync, shown
 /// on the lock screen and in the Dynamic Island. The app updates it locally while the session
 /// keeps it running in the background; there is no push server.
 struct SessionAttributes: ActivityAttributes {

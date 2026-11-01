@@ -7,6 +7,7 @@ struct SessionPanel: View {
     @Environment(ShootingSession.self) private var session
     @Environment(BLECameraController.self) private var ble
     @Environment(ShutterState.self) private var shutter
+    @Environment(PhotoPlaces.self) private var places
 
     var body: some View {
         Panel(title: "session", meta: session.isActive ? "live activity" : "off") {
@@ -33,7 +34,8 @@ struct SessionPanel: View {
                             .padding(.horizontal, 14).padding(.bottom, 10)
                     }
                 } else {
-                    Text("keeps the camera linked and geotagged with the phone in a pocket, and shows the link, geotags and frames on the lock screen.")
+                    if let last = session.last { lastLine(last) }
+                    Text("keeps the camera linked and geotagged with the phone in a pocket, and shows the link and geotags on the lock screen. the card counts its photos the next time the camera is plugged in.")
                         .font(Typeface.body(13))
                         .foregroundStyle(Token.mutedForeground)
                         .fixedSize(horizontal: false, vertical: true)
@@ -47,5 +49,18 @@ struct SessionPanel: View {
             }
             .transaction { $0.animation = nil }
         }
+    }
+
+    /// `last ┄┄ 14:02–15:40 · 36 photos`, counted from the card. Until the card is read after the
+    /// session, it says so.
+    private func lastLine(_ span: DateInterval) -> some View {
+        let range = span.start.formatted(date: .omitted, time: .shortened).lowercased() + "–"
+            + span.end.formatted(date: .omitted, time: .shortened).lowercased()
+        let read = (places.readAt ?? .distantPast) >= span.end
+        let n = places.shotCount(from: span.start, to: span.end)
+        return LeaderRow(label: "last", value: range + " · " + (read ? "\(n) photo\(n == 1 ? "" : "s")" : "plug in to count"),
+                         valueColor: read ? Token.foreground : Token.mutedForeground)
+            .padding(.horizontal, 14).padding(.top, 12)
+            .accessibilityIdentifier("session.last")
     }
 }

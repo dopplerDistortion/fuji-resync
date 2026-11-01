@@ -188,7 +188,7 @@ struct RootView: View {
     /// The map's pins: the GPS of every photo on the card not read before.
     private func readPlaces() async {
         let read = await usb.readPhotoPlaces(skipping: places.checked)
-        if !read.checked.isEmpty { places.merge(read.places, checked: read.checked) }
+        if !read.checked.isEmpty { places.merge(read.places, checked: read.checked, taken: read.taken) }
     }
 
     /// Wi-Fi stays up when you leave the shoot tab and drops after the idle setting.

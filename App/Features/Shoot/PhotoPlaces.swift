@@ -21,12 +21,14 @@ struct PhotoPlace: Codable, Hashable, Identifiable {
         if (gps[kCGImagePropertyGPSLatitudeRef as String] as? String)?.uppercased() == "S" { lat = -lat }
         if (gps[kCGImagePropertyGPSLongitudeRef as String] as? String)?.uppercased() == "W" { lon = -lon }
         guard abs(lat) <= 90, abs(lon) <= 180, !(lat == 0 && lon == 0) else { return nil }
-        var taken: Date?
-        if let exif = meta[kCGImagePropertyExifDictionary as String] as? [AnyHashable: Any],
-           let s = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String {
-            taken = exifDate.date(from: s)
-        }
-        return PhotoPlace(file: file.lowercased(), taken: taken, latitude: lat, longitude: lon)
+        return PhotoPlace(file: file.lowercased(), taken: takenDate(metadata: meta), latitude: lat, longitude: lon)
+    }
+
+    /// `{Exif}.DateTimeOriginal`, in the camera's clock (read in the phone's time zone).
+    static func takenDate(metadata: [AnyHashable: Any]?) -> Date? {
+        guard let exif = metadata?[kCGImagePropertyExifDictionary as String] as? [AnyHashable: Any],
+              let s = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String else { return nil }
+        return exifDate.date(from: s)
     }
 
     private static func number(_ v: Any?) -> Double? {
@@ -62,6 +64,9 @@ final class PhotoPlaces {
     private(set) var sent: [Sent] = []
     private(set) var readAt: Date?
     @ObservationIgnored private(set) var checked: Set<String> = []
+    /// When each photo read from the card was taken, with or without GPS: it counts the
+    /// photos of a shooting session, which Bluetooth can't report.
+    private(set) var shots: [String: Date] = [:]
 
     private struct Saved: Codable {
         var places: [PhotoPlace]
@@ -72,6 +77,7 @@ final class PhotoPlaces {
         /// metadata has its header read too. Lists saved before that are dropped, so the photos
         /// they marked are read again.
         var version: Int?
+        var shots: [String: Date]?
     }
 
     private let url: URL
@@ -85,11 +91,13 @@ final class PhotoPlaces {
             checked = (saved.version ?? 1) >= 3 ? Set(saved.checked) : []
             readAt = saved.readAt
             sent = saved.sent ?? []
+            shots = (saved.version ?? 1) >= 3 ? saved.shots ?? [:] : [:]
         }
     }
 
-    func merge(_ found: [PhotoPlace], checked names: Set<String>) {
+    func merge(_ found: [PhotoPlace], checked names: Set<String>, taken: [String: Date] = [:]) {
         checked.formUnion(names)
+        shots.merge(taken) { _, new in new }
         var byID = Dictionary(places.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for p in found { byID[p.id] = p }
         places = byID.values.sorted { ($0.taken ?? .distantPast) > ($1.taken ?? .distantPast) }
@@ -108,6 +116,13 @@ final class PhotoPlaces {
         save()
     }
 
+    /// Photos on the card taken between `start` and `end`, give or take a minute for the
+    /// camera's clock.
+    func shotCount(from start: Date, to end: Date) -> Int {
+        let a = start.addingTimeInterval(-60), b = end.addingTimeInterval(60)
+        return shots.values.filter { $0 >= a && $0 <= b }.count
+    }
+
     #if DEBUG
     /// A few pins for the UI tests and the simulator, which has no camera.
     func seedForUITests() {
@@ -122,7 +137,7 @@ final class PhotoPlaces {
     #endif
 
     private func save() {
-        let saved = Saved(places: places, checked: Array(checked), readAt: readAt, sent: sent, version: 3)
+        let saved = Saved(places: places, checked: Array(checked), readAt: readAt, sent: sent, version: 3, shots: shots)
         if let data = try? JSONEncoder().encode(saved) { try? data.write(to: url, options: .atomic) }
     }
 }

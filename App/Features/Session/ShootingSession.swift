@@ -10,6 +10,14 @@ import Foundation
 @Observable
 final class ShootingSession {
     private(set) var startedAt: Date?
+    /// The last session that ended, so the card's photos from it can be counted when the camera
+    /// is next plugged in: Bluetooth doesn't report the camera's own shots.
+    private(set) var last: DateInterval? = {
+        let d = UserDefaults.standard
+        guard let a = d.object(forKey: "session.lastStart") as? Date,
+              let b = d.object(forKey: "session.lastEnd") as? Date, b >= a else { return nil }
+        return DateInterval(start: a, end: b)
+    }()
     /// Why the Live Activity couldn't start, if it couldn't. The session still runs without it.
     private(set) var fault: String?
     var isActive: Bool { startedAt != nil }
@@ -57,6 +65,12 @@ final class ShootingSession {
     func end() {
         guard isActive else { return }
         let final = snapshot()
+        if let since = startedAt {
+            let span = DateInterval(start: since, end: max(since, Date()))
+            last = span
+            UserDefaults.standard.set(span.start, forKey: "session.lastStart")
+            UserDefaults.standard.set(span.end, forKey: "session.lastEnd")
+        }
         startedAt = nil
         background?.invalidate()
         background = nil
@@ -70,7 +84,7 @@ final class ShootingSession {
         }
         activity = nil
         fault = nil
-        AppLog.write(.app, "shooting session ended · \(final.geotags) geotags · \(final.frames) frames")
+        AppLog.write(.app, "shooting session ended · \(final.geotags) geotags · \(final.frames) fired from resync")
         Haptic.play(.selection)
     }
 

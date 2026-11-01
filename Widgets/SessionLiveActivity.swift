@@ -30,7 +30,7 @@ struct SessionLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 4) {
                         Row(label: "geotag", value: geotag(context.state))
-                        Row(label: "frames", value: frames(context.state.frames))
+                        Row(label: "fired", value: frames(context.state.frames))
                     }
                     .padding(.horizontal, 4)
                 }
@@ -41,8 +41,11 @@ struct SessionLiveActivity: Widget {
                 }
                 .foregroundStyle(Token.foreground)
             } compactTrailing: {
-                Text(frames(context.state.frames))
+                // The camera doesn't report its own shots over Bluetooth, so the island shows
+                // the session's time rather than a frame count.
+                Text(timerInterval: context.attributes.startedAt ... Date.distantFuture, countsDown: false)
                     .font(.custom("GeistMono-Medium", size: 13)).monospacedDigit()
+                    .frame(maxWidth: 56)
                     .foregroundStyle(Token.foreground)
             } minimal: {
                 Mark(link: context.state.link)
@@ -77,7 +80,7 @@ private struct LockScreen: View {
             Rectangle().fill(Token.border).frame(height: 1)
             Row(label: "geotag", value: geotag(context.state))
             Row(label: "sent", value: "\(context.state.geotags)")
-            Row(label: "frames", value: frames(context.state.frames))
+            Row(label: "fired", value: frames(context.state.frames))
         }
         .padding(16)
         .foregroundStyle(Token.foreground)

@@ -307,6 +307,8 @@ extension BLECameraController: CBCentralManagerDelegate {
 
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         MainActor.assumeIsolated {
+            // After forget we dropped the peripheral on purpose; its disconnect isn't a failed link.
+            guard peripheral === self.peripheral else { note("disconnected"); return }
             let wasLinked = isLinked
             note("disconnected\(wasLinked ? "" : " before the camera accepted")" + (error.map { ": \($0.localizedDescription)" } ?? ""))
             characteristics = [:]

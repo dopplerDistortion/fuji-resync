@@ -308,7 +308,7 @@ In order. Each is read-only until it says otherwise.
 | T1 | GATT inventory on the X-T30 II, then a read-only `backup.dat` download with fuji-bridge's sequence. Verify the checksum. | BT-5, BK-2 |
 | T2 | Dump A, change one C7 parameter in the camera menu, dump B, diff. Repeat for each parameter and the slot name. | BK-3, and the per-slot patch in RS-4 |
 | T3 | Capture XApp Backup/Restore on this body (Android HCI snoop log or iOS PacketLogger). | RS-4 |
-| T4 | Capture FujiStyle writing one known recipe to C7. | RS-4 (per-slot write) |
+| T4 | Capture FujiStyle, and Fuji Recipes (fujirecipes.co, says "over Bluetooth or cable" and lists the X-T30 II), writing one known recipe to C7 on this camera. Record over the air with Apple's Bluetooth logging profile + PacketLogger; don't decompile the apps. | RS-4 (per-slot write) |
 | T5 | Power-off standby: with IMAGE TRANSFER WHILE POWER OFF on, does the camera advertise, accept a connection and answer BACKUP_REQUEST? | BT-8 |
 | T6 | Compare the on-phone preview (PV-2) with in-camera JPEGs of the same RAF for each film simulation, to tune the approximation. | PV-2 quality |
 | T7 | Pair a secure-firmware body (e.g. X-T5 4.30 or X100VI 1.30): numeric comparison, STATUS handshake, NOT1 value, reconnect after an address rotation, behaviour after a camera-side reset. | BT-11…16 |

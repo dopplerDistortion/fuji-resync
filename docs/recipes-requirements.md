@@ -13,6 +13,7 @@ The asked-for scope is mostly buildable, but **three parts rest on things nobody
 | Asked for | Verdict | Why |
 |---|---|---|
 | Bluetooth as the main link | **Feasible** for pairing, presence, reconnect | Legacy token pairing is verified on this body by resync. |
+| Up-to-date (secure) pairing | **Not possible on the X-T30 II; planned for newer bodies** | The camera picks the scheme, and the X-T30 II never got the July 2025 secure-Bluetooth firmware. resync supports both so newer bodies work (§4.1.1). |
 | Back up C1–C7 over Bluetooth | **Plausible, unverified** | The read protocol (BACKUP_REQUEST + file service, ~33 KB `backup.dat`) comes from an XApp decompile and has only run against a fake camera. The blob format, including where C1–C7 sit, is undocumented. |
 | Restore / write C1–C7 over Bluetooth | **Not feasible today; blocked on reverse engineering** | The write direction of the file service is unpublished. FujiStyle claims it works on the X-T30 II, but no capture exists. A whole-blob restore also overwrites every menu setting, not one slot. |
 | Back up and restore C1–C7 over USB | **Feasible, verified** | resync already reads and writes 0xD18C–0xD1A5 on this body in USB RAW CONV./BACKUP RESTORE mode. |
@@ -33,7 +34,7 @@ The asked-for scope is mostly buildable, but **three parts rest on things nobody
 - A clear free tier that is useful on its own, and a subscription that unlocks all slots, cloud and social.
 
 **Non-goals (this phase)**
-- Bodies other than the X-T30 II. The model and codecs should not block adding them later.
+- Recipe backup and writes on bodies other than the X-T30 II. Pairing supports both legacy and secure bodies (§4.1), and the model and codecs should not block adding recipe support for them later.
 - Changing ISO, aperture, exposure compensation or drive over Bluetooth (claimed by Huginn, unproven, not part of custom settings).
 - Moving images over Bluetooth. Not possible.
 - Android, web.
@@ -82,7 +83,7 @@ IDs are stable so issues and PRs can refer to them. **M** = must for the first r
 | ID | Requirement | Pri | Notes |
 |---|---|---|---|
 | BT-1 | Pair using the legacy scheme: write the 4-byte advertised token to `aba356eb`, the client name to `85b9163e`. | M | Verified on X-T30 II. Exists in `BLECameraController`. |
-| BT-2 | Detect and refuse secure-pairing bodies (advert `a9d2b304`/`804daa8e`, 5-byte serial) with a clear "not supported yet" message. | M | X-T30 II is legacy only; guards against other bodies. |
+| BT-2 | Detect the pairing scheme from the advertisement and route to the right flow: legacy (type `0x02` + 4-byte token, `117c4142`/`af854c2e`) or secure (5-byte ASCII serial, `a9d2b304` in pairing mode, `804daa8e`/`123d8f06` once bonded). | M | The camera picks the scheme; the app can't upgrade a legacy body. See §4.1.1. |
 | BT-3 | Reconnect automatically when the camera turns on, using CoreBluetooth state restoration, in the foreground and background. | M | Already the "spine" design in seamless-camera-connection.md. |
 | BT-4 | Read model, firmware and serial from DIS (`2a24`, `2a26`, `2a25`) on every connect and tie backups to that serial. | M | Only seen in the X-T4 GATT dump; confirm on this body (T1). |
 | BT-5 | Run a full GATT inventory on first pairing and store it, to decide which recipe capabilities this body supports (backup service present or not). | M | `F14E7A88`, `11438C83`, the `af854c2e` FILE_* characteristics. |
@@ -90,6 +91,23 @@ IDs are stable so issues and PRs can refer to them. **M** = must for the first r
 | BT-7 | Keep the link alive during a transfer: keep the app in the foreground with a progress screen and warn that locking the phone cuts the link. | M | FujiStyle reports idle drops after about 20 s and drops on phone lock. |
 | BT-8 | Support connecting while the camera is powered off (IMAGE TRANSFER WHILE POWER OFF). | L | Claimed by FujiStyle and Huginn; untested (T5). |
 | BT-9 | Write the camera clock (`b9bfd37f`) after NOT1. | S | Not recipes, but cheap while pairing work is open. |
+| BT-10 | Harden legacy pairing: only start pairing when the camera is in PAIRING REGISTRATION mode (token present in the advert), remember the camera by serial and CoreBluetooth identifier, and warn before connecting to a camera that isn't the remembered one. | M | Legacy has no link-layer encryption, so the app is the only guard. |
+
+#### 4.1.1 Secure pairing (newer bodies)
+
+Fujifilm's July 2025 firmware moved X-T5 (4.30), X-S20 (3.30), X-T50 (1.30), X-M5 (1.20), X100VI (1.30), GFX100RF (1.10) and X half (1.20) to LE Secure Connections bonding. Bodies released later (X-E5, X-T30 III) likely ship with it. **The X-T30 II will never get it**: its last firmware is 2.04 (March 2024). Only the pairing step changes; shutter, geotag, Wi-Fi handover and the file service are the same characteristics on both schemes (ble.md §3, Q3).
+
+| ID | Requirement | Pri | Notes |
+|---|---|---|---|
+| BT-11 | Bond with a secure body using LE Secure Connections with numeric comparison. iOS shows the system pairing prompt with the six-digit number; the user confirms it on the phone and on the camera. | M | Triggered by iOS when the app first touches an encrypted characteristic. The app can't draw or skip the prompt. |
+| BT-12 | After bonding, run the STATUS handshake: read `f557d96b` in `123d8f06`, write it back with byte 3 set to `0x20`, then write the client name (`85b9163e`) and `eb4166b0` as on legacy. | M | From furble and MaxRink's X100VI notes. Unverified on any body in this project. |
+| BT-13 | Treat NOT1 (`f9150137`) as "registered" for both `02 00` (legacy) and `01 00` (X100VI). | M | |
+| BT-14 | Reconnect bonded bodies by their CoreBluetooth identifier. Secure bodies rotate their resolvable private address; iOS resolves it with the bond's IRK, so never match by MAC or by the advert's serial fragment alone. | M | |
+| BT-15 | Don't subscribe to NOT3 (`7170fd5a` in `804daa8e`). | M | Subscribing can disconnect X-H2-family bodies (MaxRink plan 159). |
+| BT-16 | Handle a lost bond: when the camera has been reset or paired to another phone, iOS fails encryption. Detect it, explain that the camera must be re-registered, and tell the user to "Forget This Device" in iOS Settings → Bluetooth (an app can't remove a bond). | M | The most common support issue on bonded links. |
+| BT-17 | Keep one pairing screen for both schemes. The user only sees a different step (confirm the number) when the camera is secure. | M | |
+
+Secure pairing makes resync work with newer bodies for location, shutter and Wi-Fi from day one. Recipe backup and writes on those bodies still need their own blob and slot codecs (Q9).
 
 ### 4.2 Backup (BK)
 
@@ -279,6 +297,7 @@ Storage: the library stays a JSON bundle in Application Support (`recipes.json`)
 10. **In-camera RAW conversion only accepts RAFs shot by the same body**, needs USB, and is verified only on the X-T30 Mk I. (usb.md)
 11. **Distribution.** StoreKit subscriptions, CloudKit, Sign in with Apple and App Store review all need the paid Apple Developer Program. The current free Personal Team build (7-day signing) can't ship them. (README)
 12. **Firmware is frozen at 2.04**, so once the X-T30 II protocol is captured it won't change under us. Other bodies will need their own blob parsers.
+13. **The X-T30 II stays on legacy pairing for good.** Secure pairing exists only on bodies with the July 2025 firmware or later. resync can't test BT-11…16 without one of those bodies. (ble.md §3, Q3)
 
 ## 8. Experiments that unblock the plan
 
@@ -292,11 +311,12 @@ In order. Each is read-only until it says otherwise.
 | T4 | Capture FujiStyle writing one known recipe to C7. | RS-4 (per-slot write) |
 | T5 | Power-off standby: with IMAGE TRANSFER WHILE POWER OFF on, does the camera advertise, accept a connection and answer BACKUP_REQUEST? | BT-8 |
 | T6 | Compare the on-phone preview (PV-2) with in-camera JPEGs of the same RAF for each film simulation, to tune the approximation. | PV-2 quality |
+| T7 | Pair a secure-firmware body (e.g. X-T5 4.30 or X100VI 1.30): numeric comparison, STATUS handshake, NOT1 value, reconnect after an address rotation, behaviour after a camera-side reset. | BT-11…16 |
 
 ## 9. Suggested phasing
 
-1. **Phase 1, free tier on verified paths:** BT-1…7, BK-1/4–8, RS-1–3/5–8 over USB, EX-*, SH-1/4, PV-1–3/7, EN-1–4, the gating in §5. Run T1 and T2 in parallel.
-2. **Phase 2, Bluetooth backup:** BK-2/3 once T1/T2 pass. PV-4/5, SH-2.
+1. **Phase 1, free tier on verified paths:** BT-1…7/10, BK-1/4–8, RS-1–3/5–8 over USB, EX-*, SH-1/4, PV-1–3/7, EN-1–4, the gating in §5. Run T1 and T2 in parallel.
+2. **Phase 2, Bluetooth backup and secure pairing:** BK-2/3 once T1/T2 pass. BT-11…17 once T7 runs on a secure body. PV-4/5, SH-2.
 3. **Phase 3, Bluetooth write:** RS-4 once T3/T4 succeed. BT-8 if T5 passes.
 4. **Phase 4, subscription services:** CS-*, SO-*, SH-3, PV-6.
 
@@ -310,4 +330,5 @@ In order. Each is read-only until it says otherwise.
 - **Q6. Pricing.** Monthly and yearly price, free trial length, and whether there's a lifetime option.
 - **Q7. Apple Developer Program.** Subscriptions require it. Is the US$99/year account planned for this release? It also unlocks the Hotspot entitlement for Wi-Fi.
 - **Q8. Film simulation names and looks.** Using Fujifilm's names for recipe settings is normal across recipe apps, but the preview's approximations should not be marketed as Fujifilm's. Any appetite for a legal check before launch?
-- **Q9. Other bodies.** Is the X-T30 II the only target for the subscription launch? A second body changes T1–T4 into per-model work.
+- **Q9. Other bodies.** Pairing now plans for secure bodies too. Is the X-T30 II still the only body for recipe backup and writes at launch? A second body changes T1–T4 into per-model work.
+- **Q10. A secure test body.** BT-11…16 can't be verified without a camera on the July 2025 firmware. Do you have access to one (borrowed or second-hand X-T5, X-S20, X-T50, X-M5 or X100VI)?

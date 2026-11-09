@@ -161,12 +161,12 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
         snap("10 shoot map")
-        // The map is still easing to fit the pins when they first appear, and a tap during that
-        // animation can land on the moving map instead of the pin. Give it time, and tap once more.
-        pins.element(boundBy: 0).tap()
-        if !el("map.picked").waitForExistence(timeout: 3) { pins.element(boundBy: 0).tap() }
-        XCTAssertTrue(el("map.picked").waitForExistence(timeout: 5))
-        XCTAssertTrue(el("map.picked").label.contains("dscf01"))
+        // The pin is one accessibility element, so its tag isn't queried on its own: the pin
+        // reports "picked" as its value. (A second tap would unpick it, so tap once.)
+        let pin = pins.element(boundBy: 0)
+        pin.tap()
+        waitFor(pin, "value == 'picked'", timeout: 5)
+        XCTAssertTrue(pin.label.contains("dscf01"))
         snap("10 map pin")
     }
 

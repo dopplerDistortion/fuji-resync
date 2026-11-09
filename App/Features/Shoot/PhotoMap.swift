@@ -297,8 +297,11 @@ struct PinButton: View {
                 picked = picked == pin.id ? nil : pin.id
                 Haptic.play(.selection)
             }
+            // One element for the pin, so its tag text isn't a separate (and, while the map
+            // moves, intermittently missing) element; the pin itself says whether it's picked.
             .accessibilityElement()
             .accessibilityLabel(pin.label)
+            .accessibilityValue(picked == pin.id ? "picked" : "")
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("map.pin")
     }

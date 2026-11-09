@@ -53,6 +53,16 @@ final class BLECameraController: NSObject {
     @ObservationIgnored private var failedLinks = 0
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
 
+    /// The read-only Bluetooth backup test (log tab).
+    private(set) var backupTest: BackupTest = .idle
+    /// Each waiter carries a ticket, so a timeout left over from an earlier wait can't end a newer one.
+    @ObservationIgnored private var readWaiters: [String: (ticket: Int, cont: CheckedContinuation<Data, Error>)] = [:]
+    @ObservationIgnored private var writeWaiters: [String: (ticket: Int, cont: CheckedContinuation<Void, Error>)] = [:]
+    @ObservationIgnored private var valueWaiters: [String: (ticket: Int, cont: CheckedContinuation<Data?, Never>)] = [:]
+    @ObservationIgnored private var tickets = 0
+    /// Notifications that arrived before anyone waited for them, per characteristic the backup watches.
+    @ObservationIgnored private var inbox: [String: [Data]] = [:]
+
     private enum Keys {
         static let saved = "ble.savedPeripheral"
         static let token = "ble.token"
@@ -260,7 +270,14 @@ final class BLECameraController: NSObject {
 
     private func didUpdate(_ c: CBCharacteristic, value: Data, on p: CBPeripheral) {
         let id = c.uuid.uuidString.uppercased()
+        if let waiter = readWaiters.removeValue(forKey: id) {
+            waiter.cont.resume(returning: value)
+            return
+        }
         AppLog.write(.ble, "← \(id.prefix(8)) \(value.hex)")
+        if inbox[id] != nil {
+            if let waiter = valueWaiters.removeValue(forKey: id) { waiter.cont.resume(returning: value) } else { inbox[id]?.append(value) }
+        }
         confirmLink(p, reason: "camera answered")
         if id == FujiBLE.Characteristic.geotagRequest, value.starts(with: FujiBLE.geotagRequested) {
             guard autoSync else { return }
@@ -269,6 +286,212 @@ final class BLECameraController: NSObject {
         } else if id == FujiBLE.Characteristic.secureStatus, let ack = FujiBLE.secureStatusAck(value) {
             p.writeValue(ack, for: c, type: .withResponse)
         }
+    }
+
+    // MARK: Bluetooth backup test (read only)
+
+    enum BackupTest: Equatable {
+        case idle
+        case running(String)
+        case done(BackupResult)
+        case failed(String)
+    }
+
+    struct BackupResult: Equatable {
+        let name: String
+        let bytes: Int
+        let pieces: Int
+        /// nil when the camera sent no sum.
+        let checksumOK: Bool?
+        let file: URL
+        let inventory: URL
+    }
+
+    var backupRunning: Bool { if case .running = backupTest { return true } else { return false } }
+
+    /// Every service and characteristic the camera offers on this link, with its properties.
+    func gattInventory() -> String {
+        guard let p = peripheral else { return "no camera connected" }
+        var lines = ["\(p.name ?? "camera") \(p.identifier.uuidString)"]
+        for s in p.services ?? [] {
+            lines.append("service \(s.uuid.uuidString)")
+            for c in s.characteristics ?? [] {
+                var props: [String] = []
+                if c.properties.contains(.read) { props.append("R") }
+                if c.properties.contains(.write) { props.append("W") }
+                if c.properties.contains(.writeWithoutResponse) { props.append("w") }
+                if c.properties.contains(.notify) { props.append("N") }
+                if c.properties.contains(.indicate) { props.append("I") }
+                lines.append("  \(c.uuid.uuidString) \(props.joined())")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Downloads the camera's settings backup (`backup.dat`) over the current link and saves the raw
+    /// bytes. Read only: the camera is asked for a copy of its settings and nothing is written to them.
+    func runBackupTest() async {
+        guard !backupRunning else { return }
+        guard isLinked, let p = peripheral else {
+            backupTest = .failed("connect the camera over bluetooth first.")
+            return
+        }
+        let B = FujiBLE.Backup.self
+        backupTest = .running("checking the camera's services")
+        let inventory = gattInventory()
+        AppLog.write(.ble, "backup test: gatt inventory\n" + inventory)
+        let stamp = Self.stamp.string(from: Date())
+        let inventoryURL = Self.saveTestFile(Data(inventory.utf8), name: "\(stamp) gatt.txt")
+
+        let missing = B.required.filter { characteristics[$0] == nil }
+        guard missing.isEmpty else {
+            let list = missing.map { String($0.prefix(8)).lowercased() }.joined(separator: ", ")
+            note("backup test: camera doesn't offer \(list)")
+            backupTest = .failed("the camera doesn't offer the backup characteristics (\(list)) on this link. share the gatt list so we can see what it has.")
+            return
+        }
+
+        for id in [B.transactionState, B.state] {
+            inbox[id] = []
+            if let c = characteristics[id], !c.isNotifying { p.setNotifyValue(true, for: c) }
+        }
+        defer { inbox[B.transactionState] = nil; inbox[B.state] = nil }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+
+        do {
+            backupTest = .running("asking for the backup")
+            try await write(B.request, B.settings)
+            note("backup test: requested settings backup")
+            guard let ready = await nextValue(B.state, timeout: 10) else { throw BackupTestError("the camera didn't answer the backup request in 10 s.") }
+            note("backup test: backup state \(ready.hex)")
+            guard ready.first == 1 else { throw BackupTestError("the camera says it's busy (state \(ready.hex)). leave its menus and try again.") }
+
+            var size = ByteWriter(); size.u32(B.pieceSize)
+            try await write(B.partialSize, size.data)
+            var index = ByteWriter(); index.u32(0)
+            try await write(B.transferIndex, index.data)
+
+            var assembler = B.Assembler()
+            var name = "backup.dat"
+            var reported: Int?
+            loop: while true {
+                guard let v = await nextValue(B.transactionState, timeout: 20), let code = B.stateCode(v) else {
+                    throw BackupTestError("the transfer stalled after \(assembler.data.count) bytes.")
+                }
+                switch code {
+                case 1, 2:
+                    let piece = try await read(B.partialData)
+                    if assembler.pieces < 3 { AppLog.write(.ble, "backup test: piece \(assembler.pieces) \(piece.prefix(24).hex)") }
+                    try assembler.add(piece)
+                    backupTest = .running("receiving · \(assembler.data.count) bytes")
+                case 3:
+                    if let info = try? await read(B.information), let parsed = B.information(info) {
+                        if !parsed.name.isEmpty { name = parsed.name }
+                        reported = parsed.size
+                        note("backup test: file info \(parsed.name) \(parsed.size) bytes")
+                    }
+                    break loop
+                default:
+                    throw BackupTestError("the camera ended the transfer (state \(v.hex)) after \(assembler.data.count) bytes.")
+                }
+            }
+
+            let file = assembler.file(size: reported)
+            var ok: Bool?
+            if assembler.isComplete {
+                do { try assembler.verify(); ok = true } catch { ok = false }
+            }
+            try? await write(B.transferResult, ok == false ? B.abort : B.finish)
+            let fileURL = Self.saveTestFile(file, name: "\(stamp) \(ok == false ? "badsum " : "")\(name)")
+            note("backup test: \(name) \(file.count) bytes in \(assembler.pieces) pieces, checksum " + (ok.map { $0 ? "ok" : "mismatch \(String(format: "%04x", assembler.computed))" } ?? "absent"))
+            guard let fileURL, let inventoryURL else { throw BackupTestError("got the backup but couldn't save it on the phone.") }
+            backupTest = .done(BackupResult(name: name, bytes: file.count, pieces: assembler.pieces, checksumOK: ok, file: fileURL, inventory: inventoryURL))
+        } catch {
+            try? await write(B.transferResult, B.abort)
+            let message = (error as? BackupTestError)?.message ?? "\(error)"
+            note("backup test failed: \(message)")
+            backupTest = .failed(message)
+        }
+    }
+
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HHmmss"
+        return f
+    }()
+
+    /// Saved under Application Support/ble-backups, so a test run survives a relaunch.
+    private static func saveTestFile(_ data: Data, name: String) -> URL? {
+        guard let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else { return nil }
+        let dir = base.appendingPathComponent("ble-backups", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
+        do { try data.write(to: url, options: .atomic); return url } catch { return nil }
+    }
+
+    private func read(_ id: String, timeout: Double = 10) async throws -> Data {
+        guard let p = peripheral, let c = characteristics[id] else { throw BackupTestError("\(id.prefix(8)) isn't on this link.") }
+        guard readWaiters[id] == nil else { throw BackupTestError("already reading \(id.prefix(8)).") }
+        tickets += 1
+        let ticket = tickets
+        return try await withCheckedThrowingContinuation { cont in
+            readWaiters[id] = (ticket, cont)
+            p.readValue(for: c)
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard let self, self.readWaiters[id]?.ticket == ticket else { return }
+                self.readWaiters.removeValue(forKey: id)?.cont.resume(throwing: BackupTestError("reading \(id.prefix(8)) timed out."))
+            }
+        }
+    }
+
+    private func write(_ id: String, _ value: Data, timeout: Double = 10) async throws {
+        guard let p = peripheral, let c = characteristics[id] else { throw BackupTestError("\(id.prefix(8)) isn't on this link.") }
+        AppLog.write(.ble, "→ \(id.prefix(8)) \(value.hex)")
+        guard c.properties.contains(.write) else {
+            p.writeValue(value, for: c, type: .withoutResponse)
+            return
+        }
+        writeWaiters.removeValue(forKey: id)?.cont.resume(throwing: BackupTestError("superseded"))
+        tickets += 1
+        let ticket = tickets
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            writeWaiters[id] = (ticket, cont)
+            p.writeValue(value, for: c, type: .withResponse)
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard let self, self.writeWaiters[id]?.ticket == ticket else { return }
+                self.writeWaiters.removeValue(forKey: id)?.cont.resume(throwing: BackupTestError("writing \(id.prefix(8)) timed out."))
+            }
+        }
+    }
+
+    /// The next notification on a watched characteristic, or nil after the timeout.
+    private func nextValue(_ id: String, timeout: Double) async -> Data? {
+        if var queued = inbox[id], !queued.isEmpty {
+            let v = queued.removeFirst()
+            inbox[id] = queued
+            return v
+        }
+        tickets += 1
+        let ticket = tickets
+        return await withCheckedContinuation { cont in
+            valueWaiters.removeValue(forKey: id)?.cont.resume(returning: nil)
+            valueWaiters[id] = (ticket, cont)
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard let self, self.valueWaiters[id]?.ticket == ticket else { return }
+                self.valueWaiters.removeValue(forKey: id)?.cont.resume(returning: nil)
+            }
+        }
+    }
+
+    private func failWaiters(_ reason: String) {
+        readWaiters.values.forEach { $0.cont.resume(throwing: BackupTestError(reason)) }
+        writeWaiters.values.forEach { $0.cont.resume(throwing: BackupTestError(reason)) }
+        valueWaiters.values.forEach { $0.cont.resume(returning: nil) }
+        readWaiters = [:]; writeWaiters = [:]; valueWaiters = [:]
     }
 
     private func note(_ s: String) {
@@ -335,6 +558,7 @@ extension BLECameraController: CBCentralManagerDelegate {
             note("disconnected\(wasLinked ? "" : " before the camera accepted")" + (error.map { ": \($0.localizedDescription)" } ?? ""))
             characteristics = [:]
             handshakeSent = false
+            failWaiters("the camera disconnected")
             location.setActive(false)
             if !wasLinked { failedLinks += 1 }
             let pairingFailed = pendingPairing != nil && failedLinks >= 3
@@ -369,13 +593,28 @@ extension BLECameraController: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         MainActor.assumeIsolated {
+            let id = characteristic.uuid.uuidString.uppercased()
+            if let error, let waiter = readWaiters.removeValue(forKey: id) {
+                waiter.cont.resume(throwing: BackupTestError("reading \(id.prefix(8)) failed: \(error.localizedDescription)"))
+                return
+            }
             guard let v = characteristic.value else { return }
             didUpdate(characteristic, value: v, on: peripheral)
         }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard let error else { return }
-        MainActor.assumeIsolated { note("write \(characteristic.uuid.uuidString.prefix(8)) failed: \(error.localizedDescription)") }
+        MainActor.assumeIsolated {
+            let id = characteristic.uuid.uuidString.uppercased()
+            if let waiter = writeWaiters.removeValue(forKey: id) {
+                if let error { waiter.cont.resume(throwing: BackupTestError("writing \(id.prefix(8)) failed: \(error.localizedDescription)")) } else { waiter.cont.resume() }
+            }
+            if let error { note("write \(characteristic.uuid.uuidString.prefix(8)) failed: \(error.localizedDescription)") }
+        }
     }
+}
+
+struct BackupTestError: Error {
+    let message: String
+    init(_ message: String) { self.message = message }
 }

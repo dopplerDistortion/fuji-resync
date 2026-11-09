@@ -53,6 +53,8 @@ final class USBCameraController: NSObject {
     private(set) var phase: Phase = .idle
     private(set) var slots: [CameraPreset] = []
     private(set) var busy: String?
+    /// The camera's serial number, when ImageCaptureCore reports one. Ties backups to a body.
+    private(set) var serial: String?
     private(set) var log: [String] = []
 
     @ObservationIgnored private let browser = ICDeviceBrowser()
@@ -117,6 +119,7 @@ final class USBCameraController: NSObject {
         camera = nil
         service = nil
         slots = []
+        serial = nil
         phase = .idle
     }
 
@@ -302,6 +305,7 @@ final class USBCameraController: NSObject {
     fileprivate func sessionReady(_ cam: ICCameraDevice) {
         guard cam === camera else { return }
         let name = cam.name ?? "camera"
+        serial = cam.serialNumberString.flatMap { $0.isEmpty ? nil : $0 }
         let service = PresetService(session: PTPSession(transport: ICCPTPTransport(camera: cam), trace: { AppLog.write(.usb, $0) }))
         self.service = service
         note("session open with \(name)")

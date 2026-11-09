@@ -1,0 +1,84 @@
+{
+  "identifier" : "6C1F3A52",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6740000000",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21580001",
+      "localizations" : [
+
+      ],
+      "name" : "resync pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "2.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6740000001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Write recipes to C1–C7 and restore any backup.",
+              "displayName" : "resync pro, monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ing.goksen.resync.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "resync pro monthly",
+          "subscriptionGroupID" : "21580001",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "19.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6740000002",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Write recipes to C1–C7 and restore any backup.",
+              "displayName" : "resync pro, yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ing.goksen.resync.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "resync pro yearly",
+          "subscriptionGroupID" : "21580001",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

@@ -9,7 +9,7 @@ import os
 ///  --domain-identifier ing.goksen.resync --source Documents/resync.log --destination resync.log`
 /// It is also visible in the Files app (On My iPhone → resync) and can be shared from about.
 enum AppLog {
-    enum Category: String { case app, usb, ble, wifi, recipes }
+    enum Category: String { case app, usb, ble, wifi, recipes, store }
 
     static let fileURL: URL = {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

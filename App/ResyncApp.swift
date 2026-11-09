@@ -9,6 +9,8 @@ struct ResyncApp: App {
     @State private var ble = BLECameraController()
     @State private var wifi = WiFiRemoteController()
     @State private var queue = SendQueue()
+    @State private var backups = BackupStore(filename: UITest.backupsFilename())
+    @State private var entitlements = Entitlements()
     @State private var overlays = Overlays()
     @State private var nav = AppNav()
     @State private var shutter = ShutterState()
@@ -42,6 +44,8 @@ struct ResyncApp: App {
                 .environment(ble)
                 .environment(wifi)
                 .environment(queue)
+                .environment(backups)
+                .environment(entitlements)
                 .environment(overlays)
                 .environment(nav)
                 .environment(shutter)
@@ -97,12 +101,15 @@ struct RootView: View {
     @Environment(BLECameraController.self) private var ble
     @Environment(WiFiRemoteController.self) private var wifi
     @Environment(SendQueue.self) private var queue
+    @Environment(BackupStore.self) private var backups
+    @Environment(Entitlements.self) private var entitlements
     @Environment(Overlays.self) private var overlays
     @Environment(AppNav.self) private var nav
     @Environment(ShootingSession.self) private var session
     @Environment(ShutterState.self) private var shutter
     @Environment(PhotoPlaces.self) private var places
     @Environment(SessionRoutes.self) private var routes
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("booted") private var booted = false
     @AppStorage("wifiIdleMinutes") private var wifiIdleMinutes = 5
     @SceneStorage("tab") private var savedTab: String?
@@ -147,7 +154,11 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         // Every USB read (and the read-back after a write) refreshes the "in camera" marks.
-        .onChange(of: usb.slots) { _, slots in store.updateCamera(slots) }
+        // A full read that differs from the last one is also kept as a backup, before any queued write runs.
+        .onChange(of: usb.slots) { _, slots in
+            store.updateCamera(slots)
+            backups.record(slots, serial: usb.serial)
+        }
         // The queue drains the moment a camera is ready on USB.
         .onChange(of: usb.isReady) { _, ready in if ready { drain() } }
         // Photo access can arrive after the camera is ready.
@@ -157,6 +168,8 @@ struct RootView: View {
         .onChange(of: queue.kick) { _, _ in
             if usb.isReady { drain() } else { usb.start() }
         }
+        // A subscription can end while the app sleeps; check again when it comes back.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await entitlements.refresh() } } }
         .onChange(of: nav.tab) { old, new in
             savedTab = new.rawValue
             Haptic.play(.selection)
@@ -171,12 +184,14 @@ struct RootView: View {
         #if DEBUG
         if UITest.isOn {
             store.seedCameraForUITests()
+            backups.seedForUITests(from: store.camera)
             places.seedForUITests()
             routes.seedForUITests()
             nav.tab = .recipes
             return
         }
         #endif
+        backups.migrate(from: store.camera)
         session.restore(ble: ble, shutter: shutter)
         // Existing installs that already paired skip the first-launch boot.
         if !booted, ble.savedCameraID != nil { booted = true }
@@ -185,7 +200,7 @@ struct RootView: View {
 
     private func drain() {
         Task {
-            await queue.drain(usb: usb, store: store, overlays: overlays)
+            await queue.drain(usb: usb, store: store, entitlements: entitlements, overlays: overlays)
             await readPlaces()
         }
     }

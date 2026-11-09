@@ -9,7 +9,7 @@ struct LogView: View {
     @State private var lines: [String] = []
     @State private var category: String = "all"
 
-    private static let categories = ["all", "ble", "usb", "wifi", "recipes", "app"]
+    private static let categories = ["all", "ble", "usb", "wifi", "recipes", "store", "app"]
 
     var body: some View {
         TabScreen(path: ["log"]) {
@@ -22,6 +22,7 @@ struct LogView: View {
                             Segmented(label: "wi-fi idle", selection: $wifiIdle, options: [1, 5, 15]) { "\($0) min" }
                         }
                     }
+                    ProPanel()
                     tail
                     about
                 }

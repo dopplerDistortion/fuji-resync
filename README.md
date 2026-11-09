@@ -38,6 +38,17 @@ Run it on a device. Bluetooth, USB and Wi-Fi don't work in the simulator.
 - **shooting session:** *start shooting session* on the camera tab keeps location running in the background (iOS shows its location indicator) so the camera stays linked and geotagged with the phone in a pocket. A Live Activity on the lock screen and in the Dynamic Island shows the link, the last geotag, geotags sent and shots fired from resync. The camera reports no shot over Bluetooth (tested: no notification and no readable counter changes), so the camera tab counts a session's photos from the card the next time it is plugged in, by their EXIF time. A session also records the phone's route (fixes within 50 m, at least 5 m apart, in the background too) and keeps it on the phone; the shoot tab's map draws it as a line, and its *route* chip picks which session's route to show.
 - **remote:** open **wireless communication** on the camera, then tap *connect* in the app. The first time, accept the "resync" request on the camera.
 
+## resync pro
+
+- **Free:** the whole library, reading C1–C7, backups, import and export, and writing to **C1**.
+- **resync pro** (auto-renewing subscription, monthly or yearly): writing to all seven slots and restoring any backup to any slot. A free user can still put back every slot from a backup resync took of their own camera.
+- **Products:** `ing.goksen.resync.pro.monthly` and `ing.goksen.resync.pro.yearly`, in one subscription group. Create them in App Store Connect with these IDs. `Config/Resync.storekit` mirrors them, and the Run scheme uses it, so purchases work locally in Xcode without App Store Connect (prices there are placeholders).
+- **UI tests** run on the free plan. Add `-uitest-pro` to run as a subscriber.
+
+## backups
+
+Every time resync reads C1–C7 in full and the slots differ from the last backup, it keeps a copy. The camera is read when it's plugged in and again after each write, so the state before a write is always kept. The camera tab lists them; a backup can be restored slot by slot or whole, and exported as a file (`fx-companion.backups`). Backups opened from a file count as imported.
+
 ## import / export
 
 - **JSON:** the app's own format (`fx-companion.recipes`), which round-trips everything.

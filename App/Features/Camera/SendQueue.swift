@@ -10,7 +10,8 @@ import FujiKit
 final class SendQueue {
     struct Item: Identifiable, Equatable {
         enum Kind: Equatable {
-            case write(Recipe, slot: Int)
+            /// `restore` writes come from a backup and were cleared against the tier when queued.
+            case write(Recipe, slot: Int, restore: Bool)
             case pull
         }
 
@@ -28,13 +29,13 @@ final class SendQueue {
 
         var title: String {
             switch kind {
-            case let .write(r, slot): return "\(r.name.lowercased()) → c\(slot)"
+            case let .write(r, slot, restore): return "\(restore ? "restore " : "")\(r.name.lowercased()) → c\(slot)"
             case .pull: return "pull c1–c7 → library"
             }
         }
 
-        var slot: Int? { if case let .write(_, s) = kind { return s } else { return nil } }
-        var recipeID: UUID? { if case let .write(r, _) = kind { return r.id } else { return nil } }
+        var slot: Int? { if case let .write(_, s, _) = kind { return s } else { return nil } }
+        var recipeID: UUID? { if case let .write(r, _, _) = kind { return r.id } else { return nil } }
 
         /// Still owes the camera something: waiting, running, or failed in a way a retry fixes.
         var isOpen: Bool {
@@ -70,9 +71,9 @@ final class SendQueue {
     }
 
     @discardableResult
-    func write(_ recipe: Recipe, to slot: Int) -> UUID {
+    func write(_ recipe: Recipe, to slot: Int, restore: Bool = false) -> UUID {
         items.removeAll { $0.slot == slot && $0.isOpen && $0.state != .running }
-        let item = Item(kind: .write(recipe.normalized(), slot: slot))
+        let item = Item(kind: .write(recipe.normalized(), slot: slot, restore: restore))
         items.append(item)
         AppLog.write(.usb, "queued \(item.title)")
         askForNotifications()
@@ -106,7 +107,7 @@ final class SendQueue {
     }
 
     /// Runs every waiting item (and each retryable failure once) while the camera stays ready.
-    func drain(usb: USBCameraController, store: RecipeStore, overlays: Overlays) async {
+    func drain(usb: USBCameraController, store: RecipeStore, entitlements: Entitlements, overlays: Overlays) async {
         guard !draining else { return }
         draining = true
         defer { draining = false }
@@ -116,7 +117,7 @@ final class SendQueue {
             guard usb.isReady, let i = items.firstIndex(where: { $0.id == id }), items[i].isOpen else { continue }
             items[i].state = .running
             let kind = items[i].kind
-            let (state, lines) = await run(kind, usb: usb, store: store)
+            let (state, lines) = await run(kind, usb: usb, store: store, entitlements: entitlements)
             guard let j = items.firstIndex(where: { $0.id == id }) else { continue }
             items[j].state = state
             items[j].lines = lines
@@ -129,9 +130,13 @@ final class SendQueue {
         report(finished, overlays: overlays)
     }
 
-    private func run(_ kind: Item.Kind, usb: USBCameraController, store: RecipeStore) async -> (Item.State, [String]) {
+    private func run(_ kind: Item.Kind, usb: USBCameraController, store: RecipeStore, entitlements: Entitlements) async -> (Item.State, [String]) {
         switch kind {
-        case let .write(recipe, slot):
+        case let .write(recipe, slot, restore):
+            // Checked again here: a subscription can lapse while a write waits for the cable.
+            guard restore || entitlements.canWrite(slot: slot) else {
+                return (.failed("c\(slot) needs resync pro · free writes c1", retry: false), [])
+            }
             guard let report = await usb.write(recipe, to: slot) else {
                 return (.failed("the camera stopped answering · retries when it's back", retry: true), [])
             }

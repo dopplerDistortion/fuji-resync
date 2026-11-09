@@ -50,6 +50,18 @@ final class ResyncUITests: XCTestCase {
         wait(for: [exp], timeout: timeout)
     }
 
+    /// Waits until the element's frame is the same on two looks 0.5 s apart (at most `timeout`).
+    private func waitUntilStill(_ e: XCUIElement, timeout: TimeInterval = 6) {
+        let end = Date().addingTimeInterval(timeout)
+        var last = e.frame
+        while Date() < end {
+            Thread.sleep(forTimeInterval: 0.5)
+            let now = e.frame
+            if now == last { return }
+            last = now
+        }
+    }
+
     // MARK: Tests
 
     func testBootScreenSkipsToRecipes() {
@@ -161,11 +173,19 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
         snap("10 shoot map")
-        // The pin is one accessibility element, so its tag isn't queried on its own: the pin
-        // reports "picked" as its value. (A second tap would unpick it, so tap once.)
+        // The map eases to fit the pins after they appear, and XCUITest taps where the pin was
+        // when it looked, so wait for the pin to stop moving. Tap once: a second tap unpicks it.
         let pin = pins.element(boundBy: 0)
+        waitUntilStill(pin)
         pin.tap()
-        waitFor(pin, "value == 'picked'", timeout: 5)
+        // The pin says it's picked; its tag (map.picked) may also show up as its own element.
+        let end = Date().addingTimeInterval(5)
+        var picked = false
+        while !picked && Date() < end {
+            picked = (pin.value as? String) == "picked" || el("map.picked").exists
+            if !picked { Thread.sleep(forTimeInterval: 0.25) }
+        }
+        XCTAssertTrue(picked, "tapping a pin picks it")
         XCTAssertTrue(pin.label.contains("dscf01"))
         snap("10 map pin")
     }

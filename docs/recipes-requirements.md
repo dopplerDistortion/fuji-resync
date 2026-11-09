@@ -372,9 +372,10 @@ Nothing public documents a per-slot recipe write over Bluetooth. That still need
 ### 11.4 Changes this makes to the requirements
 
 - **RS-9 (new).** Before the first write to a camera, show that resync is not licensed by Fujifilm and that Fujifilm says unlicensed control voids the limited warranty. Ask once per camera.
-- **RS-10 (new).** Before writing a slot, read the camera's supported values for each setting and skip or flag the ones this body rejects, as FujiShare does. Read every setting back after the write (already in RS-3), and name the settings that didn't take.
+- **RS-10 (new).** Before writing a slot, read the camera's supported values for each setting and skip or flag the ones this body rejects, as FujiShare does. Read every setting back after the write (already in RS-1), and name the settings that didn't take.
 - **RS-11 (new).** Tell the user when DR or clarity was refused because of the camera's current ISO or drive mode, with what to change.
-- **PV-8 (new, optional).** Offer in-camera RAW conversion over USB as the exact preview, using FilmKit's `D185` flow. T6's on-phone approximation stays the default because it needs no cable. Constraint 10 still applies.
-- **EX-/SH-.** Add "paste as text" beside file and link, as FilmKit has.
+- **PV-6 has a source now.** The exact preview through in-camera RAW conversion can follow FilmKit's `D185` flow (upload the RAF, read the profile, send the changed one, trigger with `D183`, poll for the JPEG). Constraint 10 still applies.
+- **PV-5, checked.** FilmKit also detects which preset shot a loaded RAF, so reading the as-shot recipe is a feature users already see elsewhere.
+- **EX-2, SH-1, checked.** FilmKit shares a recipe as a file, a link or pasted text. resync already has the text and file forms; the link is SH-3.
 - **Q4 gets easier.** Every shipping competitor except two is USB only, so a first release that writes over USB and backs up over Bluetooth is at least level with the market.
 - **T2 can be shorter.** FilmKit's tables give the value sets for grain, NR and the film simulations, so the calibration run only has to find where `backup.dat` stores them, not what the values mean.

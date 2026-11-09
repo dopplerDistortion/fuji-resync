@@ -332,3 +332,49 @@ In order. Each is read-only until it says otherwise.
 - **Q8. Film simulation names and looks.** Using Fujifilm's names for recipe settings is normal across recipe apps, but the preview's approximations should not be marketed as Fujifilm's. Any appetite for a legal check before launch?
 - **Q9. Other bodies.** Pairing now plans for secure bodies too. Is the X-T30 II still the only body for recipe backup and writes at launch? A second body changes T1–T4 into per-model work.
 - **Q10. A secure test body.** BT-11…16 can't be verified without a camera on the July 2025 firmware. Do you have access to one (borrowed or second-hand X-T5, X-S20, X-T50, X-M5 or X100VI)?
+
+## 11. API sources and reference apps
+
+Checked 9 November 2026. The question was whether an official API covers these features, and which existing apps the requirements can be checked against.
+
+### 11.1 There is no official API for this
+
+Fujifilm's [Camera Control SDK](https://www.fujifilm-x.com/en-ca/camera-control-sdk/) (v1.34) is the only official one, and it doesn't fit:
+
+- **No iOS.** Windows, macOS, Linux, and Android over USB only.
+- **No Bluetooth.** USB, or TCP/IP through a Wi-Fi access point.
+- **No X-T30 II.** The list is X-M5, X-T3, X-T4, X-Pro3, X-S10, X-H2S, X-H2, X-T5, X-S20 and GFX bodies.
+- **No recipes.** It covers tethered shooting and image transfer. The page says RAW conversion information is not provided, and custom settings aren't mentioned.
+
+Every recipe app on the market, including the ones below, works from the reverse-engineered protocol. Fujifilm's SDK page says unlicensed control voids the camera's limited warranty; Fuji X Weekly and FujiShare both repeat that warning to their users. resync should show the same notice before the first write (new requirement **RS-9**).
+
+### 11.2 Protocol sources, best first
+
+| Source | Covers | Licence | Use for |
+|---|---|---|---|
+| [eggricesoy/filmkit](https://github.com/eggricesoy/filmkit) | USB PTP: slot select `D18C`, name `D18D`, 24 settings `D18E`–`D1A5`; in-camera RAW conversion through the `D185` profile; encoding tables in `src/profile/`. From Wireshark captures of X RAW Studio. Tested on the X100VI only. | MIT | RS-1…3 over USB, PV in-camera conversion, the value tables (grain is a flat 1–5 enum for off, weak/strong × small/large) |
+| [petabyt/libfuji](https://github.com/petabyt/libfuji) | C library: Wi-Fi (XApp mode), Bluetooth pairing in legacy and secure modes, PC AutoSave, tethering, RAW conversion. Replaces the archived [petabyt/fp](https://github.com/petabyt/fp) profile parser. | MIT | BT-11…16 secure pairing, cross-checks |
+| [pinpox/rawji](https://github.com/pinpox/rawji), libgphoto2 | The older `D185` layout and the PTP basics FilmKit builds on. | open | Cross-checks |
+| fuji-bridge | The Bluetooth `backup.dat` sequence. Verified on this X-T30 II in T1. | — | BK-2 |
+| resync's own dumps | The `backup.dat` layout and the 13 mapped settings (T1, T2). No public source documents this file. | ours | BK-3, RS-4 |
+
+Nothing public documents a per-slot recipe write over Bluetooth. That still needs the captures in T3 and T4.
+
+### 11.3 Reference apps and what they confirm
+
+| App | Transport | X-T30 II | What to take from it |
+|---|---|---|---|
+| [Fuji X Weekly](https://fujixweekly.com/2026/08/20/new-send-recipes-to-your-camera-directly-from-the-fuji-x-weekly-app/) (iOS, Android) | USB only, in USB RAW CONV./BACKUP RESTORE mode | Listed | One recipe to one slot is free; sets of recipes are paid. Same split as §5. It skips ISO and exposure compensation (constraint 9), warns that DR and clarity can be rejected depending on ISO or drive mode, and needs a cable under 1.5 m. |
+| [FujiShare](https://www.notebookcheck.net/New-FujiShare-beta-writes-7-Fujifilm-film-recipes-to-C1-C7-over-USB-with-read-back-checks.1378419.0.html) (iOS beta) | USB only | Not listed (X100V and X-Processor 5 bodies) | Checks which settings the body supports before writing, writes each setting on its own, reads every one back, reports a failed write, and saves a restore point first. Builds a shared post from a JPEG's metadata. |
+| FilmKit (web) | USB (WebUSB) | "Likely", untested | Detects which preset shot a loaded RAF, drag between camera and library, export as file, link or pasted text, quick compare. |
+| Fuji Recipes (fujirecipes.co), FujiStyle | Bluetooth or cable | Listed by Fuji Recipes | The only apps claiming Bluetooth writes. Closed source: capture them over the air (T4). |
+
+### 11.4 Changes this makes to the requirements
+
+- **RS-9 (new).** Before the first write to a camera, show that resync is not licensed by Fujifilm and that Fujifilm says unlicensed control voids the limited warranty. Ask once per camera.
+- **RS-10 (new).** Before writing a slot, read the camera's supported values for each setting and skip or flag the ones this body rejects, as FujiShare does. Read every setting back after the write (already in RS-3), and name the settings that didn't take.
+- **RS-11 (new).** Tell the user when DR or clarity was refused because of the camera's current ISO or drive mode, with what to change.
+- **PV-8 (new, optional).** Offer in-camera RAW conversion over USB as the exact preview, using FilmKit's `D185` flow. T6's on-phone approximation stays the default because it needs no cable. Constraint 10 still applies.
+- **EX-/SH-.** Add "paste as text" beside file and link, as FilmKit has.
+- **Q4 gets easier.** Every shipping competitor except two is USB only, so a first release that writes over USB and backs up over Bluetooth is at least level with the market.
+- **T2 can be shorter.** FilmKit's tables give the value sets for grain, NR and the film simulations, so the calibration run only has to find where `backup.dat` stores them, not what the values mean.

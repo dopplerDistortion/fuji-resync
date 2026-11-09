@@ -414,6 +414,10 @@ final class BLECameraController: NSObject {
                 let parsed = try SettingsBackup(file)
                 result.unpacked = parsed.raw.count
                 result.slotNames = parsed.slots.map(\.name)
+                for slot in parsed.slots {
+                    let (r, unmapped) = slot.decode()
+                    AppLog.write(.ble, "backup test: c\(slot.slot) \(r.name) · \(r.filmSimulation.label.lowercased()) · not read yet: \(unmapped.joined(separator: ", "))")
+                }
                 note("backup test: unpacked \(parsed.raw.count) bytes, \(parsed.model) format \(parsed.format), slots " + parsed.slots.map { "c\($0.slot) \($0.name)" }.joined(separator: " · "))
             } catch {
                 result.parseError = "\(error)"

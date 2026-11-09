@@ -85,3 +85,77 @@ public struct SettingsBackup: Equatable, Sendable {
         return out
     }
 }
+
+/// Reads a recipe out of a slot's setting bytes (X-T30 II, format 0100).
+///
+/// Mapped on 2026-11-09 by lining up a Bluetooth dump against a USB read of the same seven slots.
+/// Offsets are into `Slot.settings`. Values seen in only some slots are marked; anything not
+/// mapped keeps the recipe default and is listed in `unmapped`, so a caller never shows a guess
+/// as the camera's value.
+///
+/// | offset | setting | encoding |
+/// |---|---|---|
+/// | 0x00 | colour temperature | u16 LE, Kelvin |
+/// | 0x28 | WB mode | 0 auto, 1 white priority, 10 Kelvin (others unseen) |
+/// | 0x29 + 2k | WB shift for mode k | (9 − red, 9 − blue); k in menu order: auto, white priority, ambience, custom 1–3, K, … |
+/// | 0x46 | clarity | clarity + 6 |
+/// | 0x4a | film simulation | see `filmCodes` (only five seen) |
+/// | 0x50 / 0x51 | mono warm-cool / magenta-green | 18 − value (warm-cool seen once) |
+/// | 0x52 | dynamic range | 0 auto, 2 DR200, 3 DR400 (1 DR100 assumed) |
+/// | 0x54 | colour | 7 − colour |
+/// | 0x55 | sharpness | 4 − sharpness |
+/// | 0x56 / 0x57 | highlight / shadow | (tone + 2) × 2 |
+/// | 0x58 / 0x59 | colour chrome / FX blue | 0 off, 1 weak, 2 strong |
+///
+/// Not mapped yet: grain (0x5a–0x5c change with it but don't fit one encoding), noise reduction
+/// (−4 in every slot), smooth skin.
+public extension SettingsBackup.Slot {
+    static let filmCodes: [UInt8: FilmSimulation] = [
+        2: .astia, 4: .velvia, 15: .classicChrome, 16: .classicNeg, 21: .acrosRed,
+    ]
+    /// Position of each WB mode in the shift table.
+    static let wbModes: [UInt8: (WhiteBalance, k: Int)] = [
+        0: (.auto, 0), 1: (.autoWhitePriority, 1), 10: (.kelvin, 6),
+    ]
+    static let unmappedAlways = ["grain", "noise reduction", "smooth skin"]
+
+    func decode() -> (recipe: Recipe, unmapped: [String]) {
+        let b = Array(settings)
+        var r = Recipe(name: name.isEmpty ? "C\(slot)" : name)
+        r.source = "camera C\(slot) · bluetooth"
+        var unmapped = Self.unmappedAlways
+        guard b.count >= 0x5a else { return (r, ["everything"]) }
+
+        if let s = Self.filmCodes[b[0x4a]] { r.filmSimulation = s } else { unmapped.append("film simulation (code \(b[0x4a]))") }
+        switch b[0x52] {
+        case 0: r.dynamicRange = .auto
+        case 1: r.dynamicRange = .dr100
+        case 2: r.dynamicRange = .dr200
+        case 3: r.dynamicRange = .dr400
+        default: unmapped.append("dynamic range (code \(b[0x52]))")
+        }
+        if let mode = Self.wbModes[b[0x28]] {
+            let k = mode.k
+            r.whiteBalance = mode.0
+            r.wbShiftRed = 9 - Int(b[0x29 + 2 * k])
+            r.wbShiftBlue = 9 - Int(b[0x2a + 2 * k])
+        } else {
+            unmapped.append("white balance (code \(b[0x28]))")
+        }
+        let kelvin = Int(b[0]) | Int(b[1]) << 8
+        if r.whiteBalance == .kelvin, kelvin >= 2500 { r.kelvin = kelvin }
+        r.clarity = Int(b[0x46]) - 6
+        r.color = 7 - Int(b[0x54])
+        r.sharpness = 4 - Int(b[0x55])
+        r.highlight = Double(b[0x56]) / 2 - 2
+        r.shadow = Double(b[0x57]) / 2 - 2
+        if let s = EffectStrength(code: UInt16(b[0x58]) + 1) { r.colorChrome = s }
+        if let s = EffectStrength(code: UInt16(b[0x59]) + 1) { r.colorChromeBlue = s }
+        if r.filmSimulation.isMonochrome {
+            r.monoWarmCool = 18 - Int(b[0x50])
+            r.monoMagentaGreen = 18 - Int(b[0x51])
+            r.color = 0
+        }
+        return (r.normalized(), unmapped)
+    }
+}

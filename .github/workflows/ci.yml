@@ -18,11 +18,18 @@ jobs:
         run: swift test
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
+      # SwiftPM in Xcode 26 sometimes fails on the Mapbox binaries with "Turf.xcframework.zip ...
+      # already exists in file system", even from an empty cache: it's a race inside resolution.
+      # A second resolve finds the artifact in place, so resolve on its own and try up to 3 times.
+      - name: Resolve packages
+        run: |
+          for i in 1 2 3; do
+            xcodebuild -project Resync.xcodeproj -scheme Resync -resolvePackageDependencies && exit 0
+            echo "resolve attempt $i failed"; sleep 5
+          done
+          exit 1
       - name: Build app (simulator, unsigned)
         run: |
-          # Some runner images ship a stale SwiftPM artifact cache, and resolution then fails with
-          # "Turf.xcframework.zip ... already exists in file system". Start from an empty one.
-          rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts
           xcodebuild -project Resync.xcodeproj -scheme Resync \
             -destination 'generic/platform=iOS Simulator' \
             -quiet CODE_SIGNING_ALLOWED=NO build

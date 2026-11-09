@@ -305,6 +305,10 @@ final class BLECameraController: NSObject {
         let checksumOK: Bool?
         let file: URL
         let inventory: URL
+        /// Filled when the file unpacks into a layout FujiKit knows.
+        var unpacked: Int?
+        var slotNames: [String] = []
+        var parseError: String?
     }
 
     var backupRunning: Bool { if case .running = backupTest { return true } else { return false } }
@@ -405,7 +409,17 @@ final class BLECameraController: NSObject {
             let fileURL = Self.saveTestFile(file, name: "\(stamp) \(ok == false ? "badsum " : "")\(name)")
             note("backup test: \(name) \(file.count) bytes in \(assembler.pieces) pieces, checksum " + (ok.map { $0 ? "ok" : "mismatch \(String(format: "%04x", assembler.computed))" } ?? "absent"))
             guard let fileURL, let inventoryURL else { throw BackupTestError("got the backup but couldn't save it on the phone.") }
-            backupTest = .done(BackupResult(name: name, bytes: file.count, pieces: assembler.pieces, checksumOK: ok, file: fileURL, inventory: inventoryURL))
+            var result = BackupResult(name: name, bytes: file.count, pieces: assembler.pieces, checksumOK: ok, file: fileURL, inventory: inventoryURL)
+            do {
+                let parsed = try SettingsBackup(file)
+                result.unpacked = parsed.raw.count
+                result.slotNames = parsed.slots.map(\.name)
+                note("backup test: unpacked \(parsed.raw.count) bytes, \(parsed.model) format \(parsed.format), slots " + parsed.slots.map { "c\($0.slot) \($0.name)" }.joined(separator: " · "))
+            } catch {
+                result.parseError = "\(error)"
+                note("backup test: couldn't read the file: \(error)")
+            }
+            backupTest = .done(result)
         } catch {
             try? await write(B.transferResult, B.abort)
             let message = (error as? BackupTestError)?.message ?? "\(error)"

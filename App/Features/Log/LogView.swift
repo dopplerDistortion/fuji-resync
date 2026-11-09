@@ -220,6 +220,14 @@ private struct BLEBackupTestPanel: View {
                 LeaderRow(label: r.name, value: "\(r.bytes) bytes")
                 LeaderRow(label: "pieces", value: "\(r.pieces)")
                 LeaderRow(label: "checksum", value: r.checksumOK.map { $0 ? "ok" : "mismatch" } ?? "none sent")
+                if let unpacked = r.unpacked { LeaderRow(label: "unpacked", value: "\(unpacked) bytes") }
+                ForEach(Array(r.slotNames.enumerated()), id: \.offset) { i, n in
+                    LeaderRow(label: "c\(i + 1)", value: n.isEmpty ? "unnamed" : n.lowercased())
+                }
+            }
+            if let e = r.parseError {
+                Text("couldn't read the file: \(e)").font(Typeface.body(12)).foregroundStyle(Token.signal)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             FXButton("share backup + gatt list", .outline, compact: true) { share(r) }
         }

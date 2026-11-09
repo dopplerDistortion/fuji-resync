@@ -161,8 +161,11 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
         snap("10 shoot map")
+        // The map is still easing to fit the pins when they first appear, and a tap during that
+        // animation can land on the moving map instead of the pin. Give it time, and tap once more.
         pins.element(boundBy: 0).tap()
-        XCTAssertTrue(el("map.picked").waitForExistence(timeout: 2))
+        if !el("map.picked").waitForExistence(timeout: 3) { pins.element(boundBy: 0).tap() }
+        XCTAssertTrue(el("map.picked").waitForExistence(timeout: 5))
         XCTAssertTrue(el("map.picked").label.contains("dscf01"))
         snap("10 map pin")
     }

@@ -53,7 +53,8 @@ final class USBCameraController: NSObject {
     private(set) var phase: Phase = .idle
     private(set) var slots: [CameraPreset] = []
     private(set) var busy: String?
-    /// The camera's serial number, when ImageCaptureCore reports one. Ties backups to a body.
+    /// The camera's serial number, to tie backups to a body. Always nil for now: ImageCaptureCore
+    /// has no serial on iOS. The next step is reading it from PTP GetDeviceInfo (0x1001).
     private(set) var serial: String?
     private(set) var log: [String] = []
 
@@ -305,7 +306,6 @@ final class USBCameraController: NSObject {
     fileprivate func sessionReady(_ cam: ICCameraDevice) {
         guard cam === camera else { return }
         let name = cam.name ?? "camera"
-        serial = cam.serialNumberString.flatMap { $0.isEmpty ? nil : $0 }
         let service = PresetService(session: PTPSession(transport: ICCPTPTransport(camera: cam), trace: { AppLog.write(.usb, $0) }))
         self.service = service
         note("session open with \(name)")

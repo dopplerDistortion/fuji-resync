@@ -20,6 +20,9 @@ jobs:
         run: brew install xcodegen && xcodegen generate
       - name: Build app (simulator, unsigned)
         run: |
+          # Some runner images ship a stale SwiftPM artifact cache, and resolution then fails with
+          # "Turf.xcframework.zip ... already exists in file system". Start from an empty one.
+          rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts
           xcodebuild -project Resync.xcodeproj -scheme Resync \
             -destination 'generic/platform=iOS Simulator' \
             -quiet CODE_SIGNING_ALLOWED=NO build

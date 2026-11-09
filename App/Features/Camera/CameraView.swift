@@ -11,7 +11,9 @@ struct CameraView: View {
     @Environment(Overlays.self) private var overlays
     @Environment(AppNav.self) private var nav
     @Environment(WiFiRemoteController.self) private var wifi
+    @Environment(BackupStore.self) private var backups
     @State private var picked: CameraPreset?
+    @State private var pickedBackup: CameraBackup?
     @State private var pullID: UUID?
 
     var body: some View {
@@ -44,6 +46,7 @@ struct CameraView: View {
                     }
                     queuePanel
                     slotsPanel
+                    backupsPanel
                     if !usb.isReady, store.camera == nil { setupSteps }
                 }
                 .padding(.horizontal, Token.gutter)
@@ -69,6 +72,9 @@ struct CameraView: View {
         .onAppear { usb.start() }
         .fxSheet(item: $picked, title: { "c\($0.slot)" }, meta: { _ in "on camera" }) { p in
             SlotDetail(preset: p) { picked = nil }
+        }
+        .fxSheet(item: $pickedBackup, title: { _ in "backup" }, meta: { $0.takenAt.formatted(date: .abbreviated, time: .shortened).lowercased() }) { b in
+            BackupDetail(backup: b) { pickedBackup = nil }
         }
     }
 
@@ -207,6 +213,34 @@ struct CameraView: View {
                                                   name: (row.name.isEmpty ? "unnamed" : row.name).lowercased(),
                                                   value: queued != nil ? "queued" : (match == nil ? "not in library" : row.recipe.filmSimulation.label.lowercased()),
                                                   inLibrary: match != nil))
+                        .stepIn(i)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Every state of c1–c7 resync has read. Tap one to put slots back.
+    private var backupsPanel: some View {
+        Panel(title: "/backups", meta: backups.backups.isEmpty ? "none yet" : "\(backups.backups.count) kept") {
+            if backups.backups.isEmpty {
+                Text("resync keeps a copy of c1–c7 each time it reads the camera, so any write can be put back.")
+                    .font(Typeface.body(13)).foregroundStyle(Token.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(14)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(backups.backups.prefix(5).enumerated()), id: \.element.id) { i, b in
+                        Button {
+                            Haptic.play(.selection)
+                            pickedBackup = b
+                        } label: {
+                            LeaderRow(mark: i == 0 ? "■" : "□",
+                                      label: b.takenAt.formatted(date: .abbreviated, time: .shortened).lowercased(),
+                                      value: b.origin == .imported ? "imported" : (i == 0 ? "latest" : "\(b.slots.count) slots"))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("backup.row")
                         .stepIn(i)
                     }
                 }
@@ -358,6 +392,7 @@ struct SendSheet: View {
     @Environment(USBCameraController.self) private var usb
     @Environment(RecipeStore.self) private var store
     @Environment(SendQueue.self) private var queue
+    @Environment(Entitlements.self) private var entitlements
     @State private var slot = 1
     @State private var sent: UUID?
 
@@ -374,6 +409,8 @@ struct SendSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let sent, let item = queue.item(sent) {
                     progress(item)
+                } else if !entitlements.canWrite(slot: slot) {
+                    ProPanel(reason: "c\(slot) needs resync pro. the free plan writes c1.")
                 } else {
                     FXButton(usb.isReady ? "write to c\(slot)" : "queue for c\(slot)", .signal, grow: true, haptic: .medium) {
                         sent = queue.write(recipe, to: slot)
@@ -387,7 +424,10 @@ struct SendSheet: View {
             .padding(.horizontal, Token.gutter)
             .padding(.bottom, 20)
         }
-        .onAppear { slot = store.slots(for: recipe).first ?? queue.queuedSlot(for: recipe) ?? 1 }
+        .onAppear {
+            let preferred = store.slots(for: recipe).first ?? queue.queuedSlot(for: recipe) ?? 1
+            slot = entitlements.canWrite(slot: preferred) ? preferred : 1
+        }
     }
 
     private var grid: some View {
@@ -414,6 +454,7 @@ struct SendSheet: View {
                     Text("C\(n)").font(Typeface.medium(16))
                     Spacer(minLength: 0)
                     if on.contains(n) { Text("■").font(.system(size: 9)) }
+                    if !entitlements.canWrite(slot: n) { Text("pro").font(Typeface.body(9)).opacity(0.75) }
                 }
                 Text(name ?? "—").font(Typeface.body(10)).lineLimit(1)
                     .opacity(0.75)
@@ -428,7 +469,7 @@ struct SendSheet: View {
         .buttonStyle(.plain)
         .transaction { $0.animation = nil }
         .accessibilityIdentifier("slot.c\(n)")
-        .accessibilityLabel("slot \(n), \(name ?? "unknown")\(on.contains(n) ? ", already holds this recipe" : "")")
+        .accessibilityLabel("slot \(n), \(name ?? "unknown")\(on.contains(n) ? ", already holds this recipe" : "")\(entitlements.canWrite(slot: n) ? "" : ", needs resync pro")")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 

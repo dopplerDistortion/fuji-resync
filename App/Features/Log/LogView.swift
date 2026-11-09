@@ -9,7 +9,7 @@ struct LogView: View {
     @State private var lines: [String] = []
     @State private var category: String = "all"
 
-    private static let categories = ["all", "ble", "usb", "wifi", "recipes", "app"]
+    private static let categories = ["all", "ble", "usb", "wifi", "recipes", "store", "app"]
 
     var body: some View {
         TabScreen(path: ["log"]) {
@@ -22,6 +22,8 @@ struct LogView: View {
                             Segmented(label: "wi-fi idle", selection: $wifiIdle, options: [1, 5, 15]) { "\($0) min" }
                         }
                     }
+                    BLEBackupTestPanel()
+                    ProPanel()
                     tail
                     about
                 }
@@ -172,5 +174,69 @@ private struct LogLine: View {
         let cat = String(line[line.index(after: open) ..< close])
         let msg = line[line.index(after: close)...].trimmingCharacters(in: .whitespaces)
         return (time, cat, msg)
+    }
+}
+
+/// T1 from the recipes requirements: a read-only download of the camera's settings backup over
+/// Bluetooth, to see whether the X-T30 II answers XApp's sequence at all. Saves the raw file to share.
+private struct BLEBackupTestPanel: View {
+    @Environment(BLECameraController.self) private var ble
+
+    var body: some View {
+        Panel(title: "bluetooth backup test", meta: "read only") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("asks the camera for a copy of its settings (backup.dat) over bluetooth and saves it. nothing on the camera changes. keep the camera on and out of its menus.")
+                    .font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                status
+                FXButton(ble.backupRunning ? "reading…" : "read backup.dat", .signal, grow: true, haptic: .medium) {
+                    Task { await ble.runBackupTest() }
+                }
+                .disabled(ble.backupRunning || !ble.isLinked)
+                .accessibilityIdentifier("ble.backupTest")
+                if !ble.isLinked {
+                    Text("connect the camera over bluetooth first.").font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch ble.backupTest {
+        case .idle:
+            EmptyView()
+        case let .running(step):
+            HStack(spacing: 8) {
+                BlinkMark()
+                Text(step).font(Typeface.body(13))
+            }
+        case let .failed(message):
+            Text(message).font(Typeface.body(13)).foregroundStyle(Token.signal)
+                .fixedSize(horizontal: false, vertical: true)
+            FXButton("share gatt list + log", .outline, compact: true) { share(nil) }
+        case let .done(r):
+            VStack(spacing: 0) {
+                LeaderRow(label: r.name, value: "\(r.bytes) bytes")
+                LeaderRow(label: "pieces", value: "\(r.pieces)")
+                LeaderRow(label: "checksum", value: r.checksumOK.map { $0 ? "ok" : "mismatch" } ?? "none sent")
+                if let unpacked = r.unpacked { LeaderRow(label: "unpacked", value: "\(unpacked) bytes") }
+                ForEach(Array(r.slotNames.enumerated()), id: \.offset) { i, n in
+                    LeaderRow(label: "c\(i + 1)", value: n.isEmpty ? "unnamed" : n.lowercased())
+                }
+            }
+            if let e = r.parseError {
+                Text("couldn't read the file: \(e)").font(Typeface.body(12)).foregroundStyle(Token.signal)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            FXButton("share backup + gatt list", .outline, compact: true) { share(r) }
+        }
+    }
+
+    private func share(_ r: BLECameraController.BackupResult?) {
+        var items: [Any] = []
+        if let r { items += [r.file, r.inventory] } else if let url = ShareSheet.file(Data(ble.gattInventory().utf8), name: "resync gatt.txt") { items.append(url) }
+        items.append(AppLog.fileURL)
+        ShareSheet.present(items)
     }
 }

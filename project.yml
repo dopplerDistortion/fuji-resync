@@ -20,6 +20,8 @@ settings:
     SWIFT_STRICT_CONCURRENCY: minimal
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+fileGroups:
+  - Config/Resync.storekit
 targets:
   Resync:
     type: application
@@ -82,6 +84,9 @@ schemes:
     build:
       targets:
         Resync: all
+    run:
+      # Local StoreKit testing: the subscriptions in Config/Resync.storekit, no App Store Connect needed.
+      storeKitConfiguration: Config/Resync.storekit
     test:
       targets:
         - ResyncUITests

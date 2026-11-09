@@ -53,6 +53,9 @@ final class USBCameraController: NSObject {
     private(set) var phase: Phase = .idle
     private(set) var slots: [CameraPreset] = []
     private(set) var busy: String?
+    /// The camera's serial number, to tie backups to a body. Always nil for now: ImageCaptureCore
+    /// has no serial on iOS. The next step is reading it from PTP GetDeviceInfo (0x1001).
+    private(set) var serial: String?
     private(set) var log: [String] = []
 
     @ObservationIgnored private let browser = ICDeviceBrowser()
@@ -117,6 +120,7 @@ final class USBCameraController: NSObject {
         camera = nil
         service = nil
         slots = []
+        serial = nil
         phase = .idle
     }
 

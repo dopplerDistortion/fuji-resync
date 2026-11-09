@@ -103,6 +103,121 @@ public enum FujiBLE {
         return w.data
     }
 
+    /// The settings backup (XApp's "Backup") over the file service, read only.
+    ///
+    /// From Th0rgal/fuji-bridge (MIT), which took the constants and the sequence from a decompile of
+    /// XApp 2.2.1. Never run on a real X-T30 II before resync's test: treat every step as a guess.
+    ///
+    /// 1. subscribe to `transactionState` and `state`
+    /// 2. write `01 00` to `request` (settings; `02 00` would be IPTC)
+    /// 3. `state` notifies `1` when the file is ready, `0` when the camera is busy
+    /// 4. write u32 120 to `partialSize`, u32 0 to `transferIndex`
+    /// 5. on each `transactionState` 1 or 2, read `partialData`
+    /// 6. on `transactionState` 3, read `information`, write `03 00` to `transferResult`; on any error `00 00`
+    public enum Backup {
+        public static let fileService = "AF854C2E-B214-458E-97E2-912C4ECF2CB8"
+        /// In the shutter service.
+        public static let request = "F14E7A88-6F57-4872-A69B-B47EF3295C9B"
+        /// In the configuration service. `1` transferable, `0` busy.
+        public static let state = "11438C83-CFB0-4511-841B-759E0D2321C8"
+        public static let transferIndex = "051DD980-DF9D-4472-A2E1-35811DD24EE1"
+        public static let partialSize = "7F3400FE-17E7-4B80-8A0E-81B0343C1B49"
+        /// `char name[40]` + u32 size, e.g. `backup.dat`, 33,404 bytes.
+        public static let information = "C922AC69-9480-4348-8F4B-9EE29BC30D1D"
+        /// `u16 seq | u32 len | data`. seq 0xFFFF is the last piece, which ends with a u16 byte sum.
+        public static let partialData = "AC0C799A-FA6C-4DF5-BBC5-BB95CCE7E6EA"
+        /// 1/2 a piece is ready, 3 done.
+        public static let transactionState = "2E27ED9F-5506-41CD-BA48-DAC06669AD95"
+        /// `03 00` finish, `00 00` abort.
+        public static let transferResult = "68052E8A-FB91-404F-8847-0EB4BE24308C"
+
+        public static let required = [request, state, partialData, transactionState, transferResult]
+
+        public static let settings = Data([0x01, 0x00])
+        public static let finish = Data([0x03, 0x00])
+        public static let abort = Data([0x00, 0x00])
+        /// Bytes per piece; XApp asks for 120.
+        public static let pieceSize: UInt32 = 120
+        /// Nothing the camera sends should come close; stops a runaway transfer.
+        public static let maxBytes = 1 << 20
+
+        public enum Failure: Error, Equatable, CustomStringConvertible {
+            case badPiece
+            case tooBig
+            case checksum(expected: UInt16, got: UInt16)
+
+            public var description: String {
+                switch self {
+                case .badPiece: return "the camera sent a malformed piece"
+                case .tooBig: return "the backup grew past 1 MB"
+                case let .checksum(e, g): return String(format: "checksum %04x, expected %04x", g, e)
+                }
+            }
+        }
+
+        /// u16 or u32 little-endian code at the start of a `transactionState` value.
+        public static func stateCode(_ v: Data) -> Int? {
+            let b = Array(v)
+            guard b.count >= 2 else { return b.first.map(Int.init) }
+            return Int(b[0]) | Int(b[1]) << 8
+        }
+
+        /// Parses `information`: the file name and its size.
+        public static func information(_ v: Data) -> (name: String, size: Int)? {
+            let b = Array(v)
+            guard b.count >= 44 else { return nil }
+            let name = String(bytes: b[0 ..< 40].prefix { $0 != 0 }, encoding: .utf8) ?? ""
+            let size = Int(b[40]) | Int(b[41]) << 8 | Int(b[42]) << 16 | Int(b[43]) << 24
+            return (name, size)
+        }
+
+        /// Puts the pieces together and checks the sum at the end.
+        public struct Assembler: Sendable {
+            public private(set) var data = Data()
+            public private(set) var pieces = 0
+            /// The sum the camera sent with the last piece, once it has arrived.
+            public private(set) var expected: UInt16?
+            private var sum: UInt32 = 0
+
+            public init() {}
+
+            public var isComplete: Bool { expected != nil }
+            public var computed: UInt16 { UInt16(truncatingIfNeeded: sum) }
+
+            /// Adds one `partialData` value. True when it was the last piece.
+            @discardableResult
+            public mutating func add(_ piece: Data) throws -> Bool {
+                var r = ByteReader(piece)
+                guard let seq = try? r.u16(), let len = try? r.u32(), Int(len) <= r.remaining,
+                      let body = try? r.bytes(Int(len)) else { throw Failure.badPiece }
+                let last = seq == 0xFFFF
+                var payload = body
+                if last {
+                    guard payload.count >= 2 else { throw Failure.badPiece }
+                    let tail = Array(payload.suffix(2))
+                    expected = UInt16(tail[0]) | UInt16(tail[1]) << 8
+                    payload = payload.dropLast(2)
+                }
+                guard data.count + payload.count <= Backup.maxBytes else { throw Failure.tooBig }
+                data.append(payload)
+                sum = payload.reduce(sum) { $0 &+ UInt32($1) }
+                pieces += 1
+                return last
+            }
+
+            /// Throws when the camera's sum doesn't match. No sum (no last piece) passes, as fuji-bridge does.
+            public func verify() throws {
+                if let expected, expected != computed { throw Failure.checksum(expected: expected, got: computed) }
+            }
+
+            /// The file, trimmed to the size the camera reported when that is shorter.
+            public func file(size: Int?) -> Data {
+                guard let size, size > 0, size < data.count else { return data }
+                return data.prefix(size)
+            }
+        }
+    }
+
     /// Reply to the secure-firmware status read: echo the first three bytes and set the last to 0x20.
     public static func secureStatusAck(_ status: Data) -> Data? {
         guard status.count == 4 else { return nil }

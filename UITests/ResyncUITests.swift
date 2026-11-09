@@ -12,9 +12,10 @@ final class ResyncUITests: XCTestCase {
 
     // MARK: Helpers
 
-    private func launch(fresh: Bool = false) {
+    /// `pro` runs as a subscriber; without it the app is on the free plan (writes c1 only).
+    private func launch(fresh: Bool = false, pro: Bool = false) {
         app = XCUIApplication()
-        app.launchArguments = ["-uitest"] + (fresh ? ["-uitest-fresh"] : [])
+        app.launchArguments = ["-uitest"] + (fresh ? ["-uitest-fresh"] : []) + (pro ? ["-uitest-pro"] : [])
         app.launch()
     }
 
@@ -47,6 +48,18 @@ final class ResyncUITests: XCTestCase {
     private func waitFor(_ e: XCUIElement, _ predicate: String, timeout: TimeInterval = 4) {
         let exp = expectation(for: NSPredicate(format: predicate), evaluatedWith: e)
         wait(for: [exp], timeout: timeout)
+    }
+
+    /// Waits until the element's frame is the same on two looks 0.5 s apart (at most `timeout`).
+    private func waitUntilStill(_ e: XCUIElement, timeout: TimeInterval = 6) {
+        let end = Date().addingTimeInterval(timeout)
+        var last = e.frame
+        while Date() < end {
+            Thread.sleep(forTimeInterval: 0.5)
+            let now = e.frame
+            if now == last { return }
+            last = now
+        }
     }
 
     // MARK: Tests
@@ -160,9 +173,20 @@ final class ResyncUITests: XCTestCase {
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 5))
         XCTAssertEqual(pins.count, 3, "three seeded photos, in three places")
         snap("10 shoot map")
-        pins.element(boundBy: 0).tap()
-        XCTAssertTrue(el("map.picked").waitForExistence(timeout: 2))
-        XCTAssertTrue(el("map.picked").label.contains("dscf01"))
+        // The map eases to fit the pins after they appear, and XCUITest taps where the pin was
+        // when it looked, so wait for the pin to stop moving. Tap once: a second tap unpicks it.
+        let pin = pins.element(boundBy: 0)
+        waitUntilStill(pin)
+        pin.tap()
+        // The pin says it's picked; its tag (map.picked) may also show up as its own element.
+        let end = Date().addingTimeInterval(5)
+        var picked = false
+        while !picked && Date() < end {
+            picked = (pin.value as? String) == "picked" || el("map.picked").exists
+            if !picked { Thread.sleep(forTimeInterval: 0.25) }
+        }
+        XCTAssertTrue(picked, "tapping a pin picks it")
+        XCTAssertTrue(pin.label.contains("dscf01"))
         snap("10 map pin")
     }
 
@@ -202,7 +226,7 @@ final class ResyncUITests: XCTestCase {
     }
 
     func testSendQueuesAWriteUntilTheCableIsIn() {
-        launch()
+        launch(pro: true)
         row(containing: "kodachrome").tap()
         button(beginningWith: "send to camera").tap()
         let c6 = el("slot.c6")
@@ -214,6 +238,41 @@ final class ResyncUITests: XCTestCase {
         snap("06 queued")
         el("sheet.close").tap()
         XCTAssertFalse(el("sheet.close").waitForExistence(timeout: 1), "a tap above the sheet closes it")
+        XCTAssertTrue(el("tab.badge").waitForExistence(timeout: 2))
+        XCTAssertEqual(el("tab.badge").label, "1 queued")
+    }
+
+    func testFreePlanWritesOnlyC1() {
+        launch()
+        row(containing: "kodachrome").tap()
+        button(beginningWith: "send to camera").tap()
+        let c6 = el("slot.c6")
+        XCTAssertTrue(c6.waitForExistence(timeout: 2))
+        c6.tap()
+        XCTAssertTrue(el("pro.panel").waitForExistence(timeout: 2), "a locked slot shows resync pro in place of the send button")
+        XCTAssertFalse(button(beginningWith: "queue for c6").exists)
+        snap("12 free c6 locked")
+        el("slot.c1").tap()
+        XCTAssertTrue(button(beginningWith: "queue for c1").waitForExistence(timeout: 2))
+        XCTAssertFalse(el("pro.panel").exists)
+    }
+
+    func testBackupRestoresASlotThroughTheQueue() {
+        launch()
+        tab("camera")
+        let backup = el("backup.row")
+        XCTAssertTrue(backup.waitForExistence(timeout: 3), "the seeded camera read is kept as a backup")
+        for _ in 0 ..< 6 where !backup.isHittable { app.swipeUp() }
+        backup.tap()
+        // The free plan may put back every slot of its own camera's backup.
+        let restore = el("backup.restore.c2")
+        XCTAssertTrue(restore.waitForExistence(timeout: 2))
+        snap("13 backup")
+        restore.tap()
+        XCTAssertTrue(button(beginningWith: "sure").waitForExistence(timeout: 2), "the first tap arms the restore")
+        button(beginningWith: "sure").tap()
+        XCTAssertTrue(app.staticTexts["queued"].waitForExistence(timeout: 2))
+        el("sheet.close").tap()
         XCTAssertTrue(el("tab.badge").waitForExistence(timeout: 2))
         XCTAssertEqual(el("tab.badge").label, "1 queued")
     }

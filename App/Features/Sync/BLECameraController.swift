@@ -52,6 +52,15 @@ final class BLECameraController: NSObject {
     /// Drops in a row before the camera accepted us. Drives the reconnect backoff.
     @ObservationIgnored private var failedLinks = 0
     @ObservationIgnored private var reconnectTask: Task<Void, Never>?
+    /// The running Bluetooth backup download (experiment T1), if any.
+    @ObservationIgnored private var backup: FujiBLEBackup.Download?
+    @ObservationIgnored private var backupWatchdog: Task<Void, Never>?
+    @ObservationIgnored private var backupStartedAt = Date()
+    /// What the last backup attempt did, for the log tab.
+    private(set) var backupStatus: String?
+    private(set) var backupRunning = false
+    /// The raw `backup.dat` and the GATT inventory from the last attempt.
+    private(set) var backupFiles: [URL] = []
 
     private enum Keys {
         static let saved = "ble.savedPeripheral"
@@ -153,6 +162,114 @@ final class BLECameraController: NSObject {
     }
 
     var canShutter: Bool { isLinked && characteristics[FujiBLE.Characteristic.shutter] != nil }
+
+    // MARK: Bluetooth backup (experiment T1)
+
+    /// Downloads `backup.dat` read-only and saves it with a list of every service and
+    /// characteristic the camera offers. It never writes camera settings.
+    func downloadBackup() {
+        guard let p = peripheral, isLinked else { backupStatus = "pair and link the camera first"; return }
+        guard !backupRunning else { return }
+        let inventory = gattInventory(p)
+        backupFiles = [saveBackupFile("gatt", ext: "txt", data: Data(inventory.utf8))].compactMap { $0 }
+        var d = FujiBLEBackup.Download()
+        let actions = d.start(available: Set(characteristics.keys))
+        backup = d
+        backupRunning = true
+        backupStartedAt = Date()
+        backupStatus = "asking the camera for its backup"
+        note("backup: started, \(characteristics.count) characteristics on this camera")
+        perform(actions, on: p)
+        armBackupWatchdog()
+    }
+
+    private func gattInventory(_ p: CBPeripheral) -> String {
+        var lines = ["resync gatt inventory", "camera: \(p.name ?? "?") \(p.identifier.uuidString)", "date: \(ISO8601DateFormatter().string(from: Date()))", ""]
+        for s in p.services ?? [] {
+            lines.append("service \(s.uuid.uuidString)")
+            for c in s.characteristics ?? [] {
+                lines.append("  \(c.uuid.uuidString)  \(Self.describe(c.properties))")
+            }
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func describe(_ p: CBCharacteristicProperties) -> String {
+        let names: [(CBCharacteristicProperties, String)] = [(.read, "read"), (.write, "write"), (.writeWithoutResponse, "write-no-rsp"),
+                                                             (.notify, "notify"), (.indicate, "indicate")]
+        return names.filter { p.contains($0.0) }.map(\.1).joined(separator: ",")
+    }
+
+    private func perform(_ actions: [FujiBLEBackup.Action], on p: CBPeripheral) {
+        for a in actions {
+            switch a {
+            case let .subscribe(id):
+                if let c = characteristics[id] { p.setNotifyValue(true, for: c) }
+            case let .write(id, value):
+                guard let c = characteristics[id] else { note("backup: no \(id.prefix(8)) to write"); continue }
+                AppLog.write(.ble, "backup → \(id.prefix(8)) \(value.hex)")
+                p.writeValue(value, for: c, type: c.properties.contains(.write) ? .withResponse : .withoutResponse)
+            case let .read(id):
+                if let c = characteristics[id] { p.readValue(for: c) }
+            case let .finished(r):
+                endBackup()
+                let file = saveBackupFile("backup", ext: "dat", data: r.data)
+                if let file { backupFiles.append(file) }
+                let sum = r.checksum.map { String(format: "checksum %04x ok", $0) } ?? "no checksum sent"
+                let secs = Int(Date().timeIntervalSince(backupStartedAt))
+                backupStatus = "got \(r.name): \(r.data.count) bytes in \(secs) s, \(sum)"
+                note("backup: \(backupStatus!)" + (r.reportedSize.map { ", camera said \($0) bytes" } ?? ""))
+            case let .failed(why):
+                endBackup()
+                backupStatus = "failed: \(why)"
+                note("backup: \(why)")
+            }
+        }
+    }
+
+    /// The camera notifies every piece; if it goes quiet for 20 s, give up.
+    private func armBackupWatchdog() {
+        backupWatchdog?.cancel()
+        backupWatchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            guard let self, !Task.isCancelled, self.backupRunning, var d = self.backup, let p = self.peripheral else { return }
+            let actions = d.timedOut()
+            self.backup = d
+            self.perform(actions, on: p)
+        }
+    }
+
+    private func endBackup() {
+        backupRunning = false
+        backupWatchdog?.cancel(); backupWatchdog = nil
+        backup = nil
+    }
+
+    private func backupDidUpdate(_ id: String, value: Data, on p: CBPeripheral) -> Bool {
+        guard backupRunning, FujiBLEBackup.Characteristic.all.contains(id), var d = backup else { return false }
+        let actions = d.receive(value, from: id)
+        backup = d
+        if d.phase == .transferring || d.phase == .finishing {
+            backupStatus = "receiving: \(d.received) bytes, \(d.chunks) pieces"
+        }
+        armBackupWatchdog()
+        perform(actions, on: p)
+        return true
+    }
+
+    private func saveBackupFile(_ prefix: String, ext: String, data: Data) -> URL? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd-HHmmss"
+        guard let dir = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("ble-backups", isDirectory: true) else { return nil }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(prefix)-\(f.string(from: Date())).\(ext)")
+        do { try data.write(to: url, options: .atomic); return url } catch {
+            note("backup: couldn't save \(prefix): \(error.localizedDescription)")
+            return nil
+        }
+    }
 
     // MARK: Internals
 
@@ -260,8 +377,10 @@ final class BLECameraController: NSObject {
 
     private func didUpdate(_ c: CBCharacteristic, value: Data, on p: CBPeripheral) {
         let id = c.uuid.uuidString.uppercased()
-        AppLog.write(.ble, "← \(id.prefix(8)) \(value.hex)")
+        // Backup pieces are 120 bytes each; log only their start.
+        AppLog.write(.ble, "← \(id.prefix(8)) \(value.prefix(24).hex)\(value.count > 24 ? " … (\(value.count) b)" : "")")
         confirmLink(p, reason: "camera answered")
+        if backupDidUpdate(id, value: value, on: p) { return }
         if id == FujiBLE.Characteristic.geotagRequest, value.starts(with: FujiBLE.geotagRequested) {
             guard autoSync else { return }
             if let loc = location.latest, loc.timestamp.timeIntervalSinceNow > -120 { send(loc) }
@@ -336,6 +455,10 @@ extension BLECameraController: CBCentralManagerDelegate {
             characteristics = [:]
             handshakeSent = false
             location.setActive(false)
+            if backupRunning {
+                endBackup()
+                backupStatus = "failed: the link dropped during the backup"
+            }
             if !wasLinked { failedLinks += 1 }
             let pairingFailed = pendingPairing != nil && failedLinks >= 3
             if pairingFailed {
@@ -376,6 +499,14 @@ extension BLECameraController: CBPeripheralDelegate {
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         guard let error else { return }
-        MainActor.assumeIsolated { note("write \(characteristic.uuid.uuidString.prefix(8)) failed: \(error.localizedDescription)") }
+        MainActor.assumeIsolated {
+            let id = characteristic.uuid.uuidString.uppercased()
+            note("write \(id.prefix(8)) failed: \(error.localizedDescription)")
+            // The finish/abort write is best effort; any other failed write stops the backup.
+            if backupRunning, FujiBLEBackup.Characteristic.all.contains(id), id != FujiBLEBackup.Characteristic.fileTransferResult {
+                endBackup()
+                backupStatus = "failed: the camera refused \(id.prefix(8)): \(error.localizedDescription)"
+            }
+        }
     }
 }

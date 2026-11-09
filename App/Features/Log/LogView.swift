@@ -23,6 +23,7 @@ struct LogView: View {
                         }
                     }
                     ProPanel()
+                    bluetoothBackup
                     tail
                     about
                 }
@@ -48,6 +49,29 @@ struct LogView: View {
                 load()
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
+        }
+    }
+
+    /// Experiment T1: read `backup.dat` over Bluetooth, read-only, and keep the raw bytes.
+    private var bluetoothBackup: some View {
+        Panel(title: "bluetooth backup", meta: "experimental · read-only") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("asks the camera for its settings backup (backup.dat) over bluetooth and saves the raw bytes with a list of the camera's services. it never writes camera settings.")
+                    .font(Typeface.body(12)).foregroundStyle(Token.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("> " + (ble.backupStatus ?? (ble.isLinked ? "ready" : "link the camera first")))
+                    .font(Typeface.diagram)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("bleBackup.status")
+                HStack(spacing: 8) {
+                    FXButton(ble.backupRunning ? "reading…" : "read backup", grow: true) { ble.downloadBackup() }
+                        .disabled(!ble.isLinked || ble.backupRunning)
+                        .accessibilityIdentifier("bleBackup.read")
+                    FXButton("share files", .ghost, grow: true) { ShareSheet.present(ble.backupFiles + [AppLog.fileURL]) }
+                        .disabled(ble.backupFiles.isEmpty)
+                }
+            }
+            .padding(14)
         }
     }
 
